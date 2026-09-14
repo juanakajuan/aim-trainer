@@ -85,7 +85,9 @@ Code: MIT. DejaVu fonts: see `assets/FONT-LICENSE.txt`. raylib and GLFW retain t
 
 ## Import a local KovaaK scenario
 
-This first importer supports the embedded Pasu family represented by VT Pasu Intermediate S5. It does not support general KovaaK scenarios. Close the app before import, then run:
+This first importer supports the embedded Pasu family represented by VT Pasu Intermediate S5. It does not support general KovaaK scenarios. Select **IMPORT .sce** in the scenario menu and choose a local file. A successful import selects the saved scenario and shows its limits. Cancel leaves your selection and saved data unchanged. Invalid files show an error. The native picker uses `kdialog` (KDE) or `zenity`; at least one must be installed. The app stays responsive while the picker is open.
+
+For terminal import, close the app, then run:
 
 ```sh
 ./target/release/aim-trainer --inspect-scenario "/path/to/VT Pasu Intermediate S5.sce"

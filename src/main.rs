@@ -1,5 +1,6 @@
 mod app;
 mod model;
+mod picker;
 mod qa;
 mod scenario;
 mod storage;
@@ -171,6 +172,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut capture_index = 0_u32;
 
     while !rl.window_should_close() {
+        app.poll_import();
         let real_dt = f64::from(rl.get_frame_time()).max(0.000_001);
         stats_time += real_dt;
         stats_frames += 1;

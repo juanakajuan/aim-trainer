@@ -38,6 +38,7 @@ impl Filter {
 #[derive(Clone, Copy)]
 pub enum Action {
     None,
+    Import,
     Start(bool),
     Restart,
     Resume,
@@ -55,6 +56,7 @@ pub struct App {
     pub selected: Drill,
     pub selected_import: Option<usize>,
     import_page: usize,
+    picker: Option<crate::picker::Picker>,
     pub preview: Session,
     pub session: Session,
     filter: Filter,
@@ -73,6 +75,7 @@ impl App {
             selected: Drill::Six,
             selected_import: None,
             import_page: 0,
+            picker: None,
             preview: Session::new(Drill::Six, true, 712),
             session: Session::new(Drill::Six, false, 712),
             filter: Filter::All,
@@ -92,12 +95,53 @@ impl App {
         }
     }
 
+    pub fn poll_import(&mut self) {
+        let Some(result) = self.picker.as_mut().and_then(crate::picker::Picker::poll) else {
+            return;
+        };
+        self.picker = None;
+        match result {
+            Ok(Some(path)) => self.import_path(&path),
+            Ok(None) => {}
+            Err(error) => self.store.notice = Some(error),
+        }
+    }
+
+    pub fn import_path(&mut self, path: &std::path::Path) {
+        match self.store.import(path) {
+            Ok(id) => {
+                if let Some(index) = self
+                    .store
+                    .scenarios
+                    .iter()
+                    .position(|scenario| scenario.id == id)
+                {
+                    self.select_import(index);
+                    self.screen = Screen::Library;
+                    self.store.notice =
+                        Some("Scenario imported. Read the limits before play.".into());
+                }
+            }
+            Err(error) => self.store.notice = Some(format!("Import failed: {error}")),
+        }
+    }
+
     pub fn active(&self) -> bool {
         self.screen == Screen::Play
             && matches!(self.session.phase, Phase::Countdown | Phase::Running)
     }
     pub fn act(&mut self, action: Action) {
+        if self.picker.is_some() {
+            return;
+        }
         match action {
+            Action::Import => {
+                self.session.pause();
+                match crate::picker::Picker::open() {
+                    Ok(picker) => self.picker = Some(picker),
+                    Err(error) => self.store.notice = Some(error),
+                }
+            }
             Action::Start(free) => {
                 self.session = Session::new(
                     self.selected,
@@ -221,6 +265,17 @@ impl App {
     fn library<D: RaylibDraw>(&mut self, ui: &mut Ui<'_, D>, preview: &RenderTexture2D) -> Action {
         let mut action = Action::None;
         ui.strong("Scenarios", 36.0, 114.0, 31.0, TEXT);
+        if self.picker.is_some() {
+            ui.text(
+                "Choose a .sce file in the file picker...",
+                505.0,
+                131.0,
+                15.0,
+                MUTED,
+            );
+        } else if ui.button("IMPORT .sce", rect(693.0, 116.0, 197.0, 40.0), false) {
+            action = Action::Import;
+        }
         ui.text(
             "Choose a drill. Build speed, control and accuracy.",
             36.0,
@@ -340,7 +395,7 @@ impl App {
                 self.select_import(index);
             }
             if self.store.scenarios.is_empty() {
-                ui.wrapped("Import from a terminal: aim-trainer --import-scenario /path/to/file.sce. Then open the app.", 62.0, 330.0, 790.0, 17.0, MUTED);
+                ui.wrapped("Select IMPORT .sce to add a local scenario. Or use aim-trainer --import-scenario /path/to/file.sce.", 62.0, 330.0, 790.0, 17.0, MUTED);
             }
             if self.import_page > 0 && ui.button("PREVIOUS", rect(62.0, 770.0, 160.0, 35.0), false)
             {
