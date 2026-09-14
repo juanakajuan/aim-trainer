@@ -293,33 +293,6 @@ impl App {
         if ui.button("FREE PLAY", rect(942.0, 679.0, 438.0, 38.0), false) {
             action = Action::Start(true);
         }
-        ui.panel(rect(36.0, 758.0, 1368.0, 71.0));
-        let settings = &self.store.settings;
-        ui.text("MOUSE", 57.0, 778.0, 11.0, MUTED);
-        ui.strong(
-            &format!("{}  /  {:.3}", settings.scale.name(), settings.sensitivity),
-            123.0,
-            778.0,
-            16.0,
-            TEXT,
-        );
-        ui.text(
-            &format!("{:.1} cm/360", settings.cm_per_turn()),
-            540.0,
-            778.0,
-            16.0,
-            ACCENT,
-        );
-        ui.text(
-            &format!("FOV  {:.0} horizontal", settings.fov),
-            746.0,
-            778.0,
-            16.0,
-            TEXT,
-        );
-        if ui.button("EDIT SETTINGS", rect(1181.0, 774.0, 200.0, 37.0), false) {
-            action = Action::Settings;
-        }
         action
     }
 
