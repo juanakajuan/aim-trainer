@@ -157,8 +157,6 @@ impl App {
             {
                 action = Action::Settings;
             }
-            ui.draw.draw_circle(1165, 41, 4.0, GREEN);
-            ui.text("OFFLINE / LINUX", 1179.0, 34.0, 13.0, MUTED);
             if ui.button("EXIT", rect(1333.0, 24.0, 74.0, 36.0), false) {
                 action = Action::Quit;
             }
