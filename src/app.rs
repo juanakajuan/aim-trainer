@@ -171,7 +171,7 @@ impl App {
             action = page_action;
         }
         if let Some(message) = &self.store.notice {
-            ui.fill(rect(32.0, 794.0, 1376.0, 42.0), Color::new(77, 47, 34, 255));
+            ui.fill(rect(32.0, 794.0, 1376.0, 42.0), SELECTED);
             ui.text(
                 &message.chars().take(125).collect::<String>(),
                 46.0,
@@ -221,10 +221,10 @@ impl App {
             let y = 315.0 + row as f32 * 69.0;
             let area = rect(37.0, y, 852.0, 68.0);
             if drill == self.selected {
-                ui.fill(area, Color::new(48, 49, 47, 255));
+                ui.rounded(area, 8.0, SELECTED);
                 ui.fill(rect(37.0, y, 3.0, 68.0), ACCENT);
             } else if ui.hovered(area) {
-                ui.fill(area, RAISED);
+                ui.rounded(area, 8.0, RAISED);
             }
             let color = match drill.mode() {
                 Mode::Click => ACCENT,
@@ -275,7 +275,7 @@ impl App {
             0.0,
             Color::WHITE,
         );
-        ui.fill(rect(954.0, 178.0, 113.0, 25.0), Color::new(24, 31, 39, 230));
+        ui.fill(rect(954.0, 178.0, 113.0, 25.0), Color::new(24, 24, 24, 230));
         ui.text(self.selected.category(), 963.0, 184.0, 11.0, ACCENT);
         ui.strong(self.selected.name(), 942.0, 435.0, 27.0, TEXT);
         ui.wrapped(
@@ -368,7 +368,7 @@ impl App {
             60.0,
             140.0,
         );
-        ui.fill(rect(64.0, 530.0, 586.0, 73.0), BG);
+        ui.rounded(rect(64.0, 530.0, 586.0, 73.0), 10.0, BG);
         ui.text("MOUSE TRAVEL FOR A FULL TURN", 84.0, 547.0, 11.0, MUTED);
         ui.strong(
             &format!("{:.2} cm / 360", s.cm_per_turn()),
@@ -548,7 +548,7 @@ impl App {
         if session.phase == Phase::Paused {
             ui.fill(
                 rect(-1000.0, -1000.0, 3440.0, 2900.0),
-                Color::new(10, 15, 22, 210),
+                Color::new(10, 10, 10, 210),
             );
             ui.panel(rect(475.0, 199.0, 490.0, 481.0));
             ui.center("PAUSED", rect(475.0, 231.0, 490.0, 50.0), 36.0, TEXT);
@@ -579,7 +579,11 @@ impl App {
         } else if session.phase == Phase::Finished {
             return self.results(ui);
         } else {
-            ui.fill(rect(31.0, 29.0, 294.0, 65.0), Color::new(18, 24, 32, 223));
+            ui.rounded(
+                rect(31.0, 29.0, 294.0, 65.0),
+                10.0,
+                Color::new(18, 18, 18, 223),
+            );
             ui.strong(session.drill.name(), 49.0, 42.0, 19.0, TEXT);
             ui.text(
                 if session.free_play {
@@ -592,7 +596,11 @@ impl App {
                 11.0,
                 ACCENT,
             );
-            ui.fill(rect(596.0, 25.0, 248.0, 81.0), Color::new(18, 24, 32, 223));
+            ui.rounded(
+                rect(596.0, 25.0, 248.0, 81.0),
+                10.0,
+                Color::new(18, 18, 18, 223),
+            );
             let time = if session.free_play {
                 session.elapsed
             } else {
@@ -618,7 +626,11 @@ impl App {
                 10.0,
                 MUTED,
             );
-            ui.fill(rect(1078.0, 29.0, 329.0, 65.0), Color::new(18, 24, 32, 223));
+            ui.rounded(
+                rect(1078.0, 29.0, 329.0, 65.0),
+                10.0,
+                Color::new(18, 18, 18, 223),
+            );
             ui.text("SCORE", 1097.0, 41.0, 10.0, MUTED);
             ui.strong(
                 &format!("{:.0}", session.score()),
@@ -635,7 +647,11 @@ impl App {
                 23.0,
                 TEXT,
             );
-            ui.fill(rect(499.0, 846.0, 442.0, 30.0), Color::new(18, 24, 32, 180));
+            ui.rounded(
+                rect(499.0, 846.0, 442.0, 30.0),
+                10.0,
+                Color::new(18, 18, 18, 180),
+            );
             ui.center(
                 "WASD  Move     LMB  Fire     R  Restart     Esc  Pause",
                 rect(499.0, 846.0, 442.0, 30.0),
@@ -643,7 +659,11 @@ impl App {
                 TEXT,
             );
             if self.store.settings.show_fps {
-                ui.fill(rect(31.0, 823.0, 236.0, 54.0), Color::new(18, 24, 32, 200));
+                ui.rounded(
+                    rect(31.0, 823.0, 236.0, 54.0),
+                    10.0,
+                    Color::new(18, 18, 18, 200),
+                );
                 ui.text(
                     &format!("{} FPS  /  {:.2} ms frame", self.fps, self.frame_ms),
                     44.0,
@@ -654,9 +674,10 @@ impl App {
                 ui.text("F3  Hide timing", 44.0, 858.0, 10.0, MUTED);
             }
             if session.phase == Phase::Countdown {
-                ui.fill(
+                ui.rounded(
                     rect(539.0, 249.0, 362.0, 157.0),
-                    Color::new(18, 24, 32, 210),
+                    12.0,
+                    Color::new(18, 18, 18, 210),
                 );
                 ui.center("GET READY", rect(539.0, 267.0, 362.0, 30.0), 17.0, ACCENT);
                 ui.center(
@@ -694,7 +715,7 @@ impl App {
         let s = &self.session;
         ui.fill(
             rect(-1000.0, -1000.0, 3440.0, 2900.0),
-            Color::new(10, 15, 22, 215),
+            Color::new(10, 10, 10, 215),
         );
         ui.panel(rect(350.0, 135.0, 740.0, 630.0));
         ui.center(
@@ -745,7 +766,7 @@ impl App {
         ];
         for (i, (label, value)) in metrics.into_iter().enumerate() {
             let x = 389.0 + i as f32 * 229.0;
-            ui.fill(rect(x, 433.0, 205.0, 83.0), BG);
+            ui.rounded(rect(x, 433.0, 205.0, 83.0), 10.0, BG);
             ui.center(label, rect(x, 442.0, 205.0, 21.0), 10.0, MUTED);
             ui.center(&value, rect(x, 471.0, 205.0, 29.0), 26.0, TEXT);
         }
