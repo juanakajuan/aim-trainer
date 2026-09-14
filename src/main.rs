@@ -1,6 +1,7 @@
 mod app;
 mod model;
 mod qa;
+mod scenario;
 mod storage;
 mod ui;
 mod world;
@@ -39,6 +40,20 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
     let smoke_dir = match args.next().as_deref() {
         None => None,
+        Some("--inspect-scenario") => {
+            let path = args.next().ok_or("--inspect-scenario needs a .sce path")?;
+            let scenario = scenario::load(Path::new(&path))?;
+            eprintln!(
+                "Score check: 4 kills / 8 shots = {:.4}",
+                scenario.score(4, 8)
+            );
+            println!(
+                "{}\n{}",
+                serde_json::to_string_pretty(&scenario)?,
+                scenario::LIMITS
+            );
+            return Ok(());
+        }
         Some("--smoke-test") => Some(PathBuf::from(
             args.next()
                 .ok_or("--smoke-test needs an output directory")?,
