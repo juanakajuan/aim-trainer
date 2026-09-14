@@ -73,16 +73,19 @@ StrafeSwapMaxPause=0.5
 Name=Edge
 CharacterProfile=Edge
 Untargetable=true
+UseAbilityFrequency=1.0
 NoDodging=true
 [Bot Profile]
 Name=Ceiling
 CharacterProfile=Ceiling
 Untargetable=true
+UseAbilityFrequency=1.0
 NoDodging=true
 [Bot Profile]
 Name=Floor
 CharacterProfile=Floor
 Untargetable=true
+UseAbilityFrequency=1.0
 NoDodging=true
 [Character Profile]
 Name=Edge
@@ -136,6 +139,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -155,6 +162,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -174,6 +185,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -193,6 +208,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -212,6 +231,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -231,6 +254,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -250,6 +277,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -269,6 +300,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -288,6 +323,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -307,6 +346,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -326,6 +369,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -345,6 +392,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -364,6 +415,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -383,6 +438,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -402,6 +461,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -421,6 +484,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     },
@@ -440,6 +507,10 @@ ChargeTimer=0.02
         {
           "name": "Path",
           "value": ""
+        },
+        {
+          "name": "Weight",
+          "value": 1.0
         }
       ]
     }

@@ -474,6 +474,7 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
             target = Some((character.get("Name")?, bot));
             count += 1;
         } else if team == "1" && bot.flag("Untargetable")? {
+            bot.number("UseAbilityFrequency", 1.0, 1.0)?;
             bot.require("NoDodging", "true")?;
             character.number("MaxSpeed", 0.0, 0.0)?;
             let abilities: Vec<_> = character
@@ -588,6 +589,9 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
     let mut spawns = Vec::new();
     let mut knockers = Vec::new();
     for o in spawn_objects {
+        if o.property("Weight")?.as_f64() != Some(1.0) {
+            return Err("Unsupported spawn Weight: requires numeric 1.0".into());
+        }
         let p = vector(&o.location)?;
         if !o.text("Path")?.is_empty() {
             return Err("Spawn paths unsupported".into());
@@ -696,11 +700,38 @@ mod tests {
             ("CharacterProfile=Ball", "CharacterProfile=Missing"),
             ("Gravity=0.5", "Gravity=NaN"),
             ("Type=Hitscan", "Type=Projectile"),
+            ("UseAbilityFrequency=1.0", "UseAbilityFrequency=0.0"),
+            (
+                "Name=Synthetic Pasu",
+                "Name=Synthetic Pasu\nTeleportEnabled=true",
+            ),
             ("BotTeams=2;2;2;2", "BotTeams=2;2;2;1"),
             ("ScorePerKill=10.0", "ScorePerKill=10.0\nScorePerDamage=1.0"),
             ("Name=Synthetic Pasu", "Name=Synthetic Pasu\nName=Duplicate"),
         ] {
             assert!(parse(&FIXTURE.replace(old, new)).is_err(), "accepted {new}");
+        }
+        for weight in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(2),
+            serde_json::json!("1"),
+            serde_json::json!(null),
+        ] {
+            let (profiles, map) = FIXTURE.split_once("[Map Data]").expect("fixture map");
+            let mut map: serde_json::Value = serde_json::from_str(map).expect("map");
+            let properties = map["objects"][0]["properties"]
+                .as_array_mut()
+                .expect("properties");
+            let property = properties
+                .iter_mut()
+                .find(|p| p["name"] == "Weight")
+                .expect("weight");
+            property["value"] = weight;
+            assert!(
+                parse(&format!("{profiles}[Map Data]{map}")).is_err(),
+                "accepted invalid spawn weight"
+            );
         }
         assert!(parse(&"x".repeat(LIMIT + 1)).is_err());
         let mut bad = scenario;
