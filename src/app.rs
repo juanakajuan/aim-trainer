@@ -39,6 +39,7 @@ impl Filter {
 pub enum Action {
     None,
     Import,
+    RemoveImport,
     Start(bool),
     Restart,
     Resume,
@@ -135,6 +136,26 @@ impl App {
             return;
         }
         match action {
+            Action::RemoveImport => {
+                let Some(scenario) = self
+                    .selected_import
+                    .and_then(|index| self.store.scenarios.get(index))
+                else {
+                    return;
+                };
+                let id = scenario.id.clone();
+                match self.store.remove_import(&id) {
+                    Ok(()) => {
+                        self.selected_import = None;
+                        self.import_page = 0;
+                        self.selected = Drill::Six;
+                        self.preview = Session::new(Drill::Six, true, 712);
+                        self.store.notice =
+                            Some("Scenario removed. Source file and results kept.".into());
+                    }
+                    Err(error) => self.store.notice = Some(format!("Remove failed: {error}")),
+                }
+            }
             Action::Import => {
                 self.session.pause();
                 match crate::picker::Picker::open() {
@@ -396,6 +417,12 @@ impl App {
             }
             if self.store.scenarios.is_empty() {
                 ui.wrapped("Select IMPORT .sce to add a local scenario. Or use aim-trainer --import-scenario /path/to/file.sce.", 62.0, 330.0, 790.0, 17.0, MUTED);
+            }
+            if self.selected == Drill::Imported
+                && self.selected_import.is_some()
+                && ui.button("REMOVE SELECTED", rect(335.0, 770.0, 245.0, 35.0), false)
+            {
+                action = Action::RemoveImport;
             }
             if self.import_page > 0 && ui.button("PREVIOUS", rect(62.0, 770.0, 160.0, 35.0), false)
             {

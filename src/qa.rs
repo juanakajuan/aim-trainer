@@ -111,7 +111,7 @@ impl Smoke {
     }
     pub fn after(
         &mut self,
-        app: &App,
+        app: &mut App,
         rl: &mut RaylibHandle,
         thread: &RaylibThread,
     ) -> Result<bool, Box<dyn Error>> {
@@ -194,6 +194,21 @@ impl Smoke {
                     self.directory.join("report.json"),
                     serde_json::to_vec_pretty(&loaded.results)?,
                 )?;
+                app.act(Action::Library);
+                app.act(Action::RemoveImport);
+                let removed = crate::storage::Store::from_paths(
+                    self.directory.join("config"),
+                    self.directory.join("state"),
+                );
+                if removed.scenarios.iter().any(|scenario| &scenario.id == id)
+                    || app.selected == Drill::Imported
+                    || app.selected_import.is_some()
+                    || app.preview.scenario.is_some()
+                    || removed.best_import(id) != loaded.best_import(id)
+                {
+                    return Err("Removal did not persist or changed result history".into());
+                }
+                println!("PASS: imported removal persists, selection resets, results kept");
                 println!(
                     "PASS: six built-in drills plus persisted Pasu, countdown, pause/resume, results, disk reload, GPU screenshots"
                 );

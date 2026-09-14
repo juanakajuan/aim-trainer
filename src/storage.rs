@@ -129,6 +129,18 @@ impl Store {
         Ok(id)
     }
 
+    pub fn remove_import(&mut self, id: &str) -> Result<(), String> {
+        let path = self.state.join("scenarios.json");
+        let mut saved = read::<Vec<crate::scenario::Scenario>>(&path)?.unwrap_or_default();
+        if saved.len() > 32 || saved.iter().any(|scenario| scenario.validate().is_err()) {
+            return Err("Saved scenario library is invalid".into());
+        }
+        saved.retain(|scenario| scenario.id != id);
+        write(&path, &saved)?;
+        self.scenarios = saved;
+        Ok(())
+    }
+
     pub fn best_import(&self, id: &str) -> f64 {
         self.results
             .iter()
@@ -232,6 +244,18 @@ mod import_tests {
         let loaded = Store::from_paths(dir.join("config"), dir.join("state"));
         assert_eq!(loaded.best(Drill::Six), 0.0);
         assert!((loaded.best_import(&id) - 28.284271247).abs() < 1e-6);
+        let library = dir.join("state/scenarios.json");
+        fs::write(&library, "invalid").expect("corrupt library");
+        assert!(store.remove_import(&id).is_err());
+        assert_eq!(store.scenarios.len(), 1);
+        assert_eq!(fs::read(&library).expect("library"), b"invalid");
+        fs::write(&library, &before).expect("restore library");
+        store.remove_import(&id).expect("remove");
+        assert!(store.scenarios.is_empty());
+        let loaded = Store::from_paths(dir.join("config"), dir.join("state"));
+        assert!(loaded.scenarios.is_empty());
+        assert!((loaded.best_import(&id) - 28.284271247).abs() < 1e-6);
+        assert_eq!(fs::read(&source).expect("source kept"), b"invalid");
         fs::remove_dir_all(dir).expect("cleanup");
     }
 }

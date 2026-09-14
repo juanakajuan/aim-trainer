@@ -390,7 +390,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             capture_index += 1;
         }
         if let Some(qa) = smoke.as_mut()
-            && qa.after(&app, &mut rl, &thread)?
+            && qa.after(&mut app, &mut rl, &thread)?
         {
             break;
         }

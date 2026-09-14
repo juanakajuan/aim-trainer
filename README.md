@@ -87,6 +87,8 @@ Code: MIT. DejaVu fonts: see `assets/FONT-LICENSE.txt`. raylib and GLFW retain t
 
 This first importer supports the embedded Pasu family represented by VT Pasu Intermediate S5. It does not support general KovaaK scenarios. Select **IMPORT .sce** in the scenario menu and choose a local file. A successful import selects the saved scenario and shows its limits. Cancel leaves your selection and saved data unchanged. Invalid files show an error. The native picker uses `kdialog` (KDE) or `zenity`; at least one must be installed. The app stays responsive while the picker is open.
 
+To remove an import, open **IMPORTED**, select it, and click **REMOVE SELECTED**. Removal is saved. The source file and result history are kept. You can import the file again later.
+
 For terminal import, close the app, then run:
 
 ```sh
