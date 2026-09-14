@@ -171,11 +171,16 @@ impl App {
             action = page_action;
         }
         if let Some(message) = &self.store.notice {
-            ui.fill(rect(32.0, 794.0, 1376.0, 42.0), SELECTED);
+            let notice_y = if self.screen == Screen::Library {
+                842.0
+            } else {
+                794.0
+            };
+            ui.fill(rect(32.0, notice_y, 1376.0, 42.0), SELECTED);
             ui.text(
                 &message.chars().take(125).collect::<String>(),
                 46.0,
-                807.0,
+                notice_y + 13.0,
                 13.0,
                 ACCENT,
             );
@@ -209,7 +214,7 @@ impl App {
             }
         }
         ui.text("6 LOCAL SCENARIOS", 714.0, 218.0, 12.0, MUTED);
-        ui.panel(rect(36.0, 267.0, 854.0, 471.0));
+        ui.panel(rect(36.0, 267.0, 854.0, 562.0));
         ui.text("SCENARIO", 62.0, 282.0, 12.0, MUTED);
         ui.text("TYPE", 516.0, 282.0, 12.0, MUTED);
         ui.text("BEST SCORE", 750.0, 282.0, 12.0, MUTED);
@@ -218,11 +223,11 @@ impl App {
             .filter(|d| self.filter.accepts(*d))
             .enumerate()
         {
-            let y = 315.0 + row as f32 * 69.0;
-            let area = rect(37.0, y, 852.0, 68.0);
+            let y = 315.0 + row as f32 * 84.0;
+            let area = rect(37.0, y, 852.0, 83.0);
             if drill == self.selected {
                 ui.rounded(area, 8.0, SELECTED);
-                ui.fill(rect(37.0, y, 3.0, 68.0), ACCENT);
+                ui.fill(rect(37.0, y, 3.0, 83.0), ACCENT);
             } else if ui.hovered(area) {
                 ui.rounded(area, 8.0, RAISED);
             }
@@ -232,9 +237,9 @@ impl App {
                 Mode::Switch => Color::new(180, 147, 235, 255),
             };
             ui.draw
-                .draw_circle_lines(73, (y + 32.0) as i32, 11.0, color);
-            ui.draw.draw_circle(73, (y + 32.0) as i32, 3.0, color);
-            ui.strong(drill.name(), 100.0, y + 12.0, 18.0, TEXT);
+                .draw_circle_lines(73, (y + 39.5) as i32, 11.0, color);
+            ui.draw.draw_circle(73, (y + 39.5) as i32, 3.0, color);
+            ui.strong(drill.name(), 100.0, y + 19.5, 18.0, TEXT);
             ui.text(
                 &format!(
                     "{} target{}  /  60 seconds",
@@ -242,11 +247,11 @@ impl App {
                     if drill.count() > 1 { "s" } else { "" }
                 ),
                 100.0,
-                y + 38.0,
+                y + 45.5,
                 12.0,
                 MUTED,
             );
-            ui.text(drill.category(), 516.0, y + 27.0, 12.0, color);
+            ui.text(drill.category(), 516.0, y + 34.5, 12.0, color);
             let best = self.store.best(drill);
             ui.strong(
                 &if best > 0.0 {
@@ -255,17 +260,17 @@ impl App {
                     "--".into()
                 },
                 766.0,
-                y + 23.0,
+                y + 30.5,
                 20.0,
                 if best > 0.0 { TEXT } else { MUTED },
             );
-            ui.fill(rect(58.0, y + 67.0, 809.0, 1.0), BORDER);
+            ui.fill(rect(58.0, y + 82.0, 809.0, 1.0), BORDER);
             if ui.clicked(area) {
                 self.selected = drill;
                 self.preview = Session::new(drill, true, 712);
             }
         }
-        ui.panel(rect(918.0, 113.0, 486.0, 625.0));
+        ui.panel(rect(918.0, 113.0, 486.0, 716.0));
         ui.text("SCENARIO PREVIEW", 942.0, 134.0, 12.0, MUTED);
         ui.draw.draw_texture_pro(
             preview.texture(),
@@ -286,39 +291,12 @@ impl App {
             16.0,
             MUTED,
         );
-        ui.text(self.selected.scoring(), 942.0, 576.0, 13.0, MUTED);
-        if ui.button("CHALLENGE", rect(942.0, 621.0, 438.0, 46.0), true) {
+        ui.text(self.selected.scoring(), 942.0, 667.0, 13.0, MUTED);
+        if ui.button("CHALLENGE", rect(942.0, 712.0, 438.0, 46.0), true) {
             action = Action::Start(false);
         }
-        if ui.button("FREE PLAY", rect(942.0, 679.0, 438.0, 38.0), false) {
+        if ui.button("FREE PLAY", rect(942.0, 770.0, 438.0, 38.0), false) {
             action = Action::Start(true);
-        }
-        ui.panel(rect(36.0, 758.0, 1368.0, 71.0));
-        let settings = &self.store.settings;
-        ui.text("MOUSE", 57.0, 778.0, 11.0, MUTED);
-        ui.strong(
-            &format!("{}  /  {:.3}", settings.scale.name(), settings.sensitivity),
-            123.0,
-            778.0,
-            16.0,
-            TEXT,
-        );
-        ui.text(
-            &format!("{:.1} cm/360", settings.cm_per_turn()),
-            540.0,
-            778.0,
-            16.0,
-            ACCENT,
-        );
-        ui.text(
-            &format!("FOV  {:.0} horizontal", settings.fov),
-            746.0,
-            778.0,
-            16.0,
-            TEXT,
-        );
-        if ui.button("EDIT SETTINGS", rect(1181.0, 774.0, 200.0, 37.0), false) {
-            action = Action::Settings;
         }
         action
     }
