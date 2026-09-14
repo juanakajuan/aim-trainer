@@ -1,6 +1,8 @@
 mod app;
 mod model;
+mod picker;
 mod qa;
+mod scenario;
 mod storage;
 mod ui;
 mod world;
@@ -39,23 +41,81 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
     let smoke_dir = match args.next().as_deref() {
         None => None,
+        Some("--import-scenario") => {
+            let path = args.next().ok_or("--import-scenario needs a .sce path")?;
+            if args.next().is_some() {
+                return Err("Unexpected import argument".into());
+            }
+            let mut store = storage::Store::load();
+            let id = store.import(Path::new(&path))?;
+            println!(
+                "Saved scenario {id}. Start the app and select IMPORTED.\n{}",
+                scenario::LIMITS
+            );
+            return Ok(());
+        }
+        Some("--inspect-scenario") => {
+            let path = args.next().ok_or("--inspect-scenario needs a .sce path")?;
+            let scenario = scenario::load(Path::new(&path))?;
+            eprintln!(
+                "Score check: 4 kills / 8 shots = {:.4}",
+                scenario.score(4, 8)
+            );
+            println!(
+                "{}\n{}",
+                serde_json::to_string_pretty(&scenario)?,
+                scenario::LIMITS
+            );
+            return Ok(());
+        }
         Some("--smoke-test") => Some(PathBuf::from(
             args.next()
                 .ok_or("--smoke-test needs an output directory")?,
         )),
         Some("--help" | "-h") => {
             println!(
-                "Aim Trainer - native Linux aim trainer\n\nRun: aim-trainer\nVerify GPU and gameplay: aim-trainer --smoke-test <output-directory>"
+                "Aim Trainer - native Linux aim trainer\n\nRun: aim-trainer\nVerify GPU and gameplay: aim-trainer --smoke-test <output-directory>\nImport: aim-trainer --import-scenario <file.sce>\nInspect: aim-trainer --inspect-scenario <file.sce>"
             );
             return Ok(());
         }
         Some(arg) => return Err(format!("Unknown argument: {arg}").into()),
     };
-    let store = if let Some(dir) = &smoke_dir {
+    let qa_source = match args.next().as_deref() {
+        Some("--scenario") if smoke_dir.is_some() => Some(PathBuf::from(
+            args.next().ok_or("--scenario needs a .sce path")?,
+        )),
+        Some(arg) => return Err(format!("Unexpected argument: {arg}").into()),
+        None => None,
+    };
+    if args.next().is_some() {
+        return Err("Unexpected extra argument".into());
+    }
+    let mut store = if let Some(dir) = &smoke_dir {
         storage::Store::from_paths(dir.join("config"), dir.join("state"))
     } else {
         storage::Store::load()
     };
+    if let Some(dir) = &smoke_dir {
+        std::fs::create_dir_all(dir)?;
+        let source = if let Some(path) = qa_source {
+            path
+        } else {
+            let path = dir.join("synthetic.sce");
+            std::fs::write(&path, include_str!("../tests/fixtures/pasu.sce"))?;
+            path
+        };
+        let id = store.import(&source)?;
+        let index = store
+            .scenarios
+            .iter()
+            .position(|s| s.id == id)
+            .ok_or("Imported scenario missing")?;
+        store.scenarios.swap(0, index);
+        std::fs::write(
+            dir.join("import-settings.json"),
+            serde_json::to_vec_pretty(&store.scenarios[0])?,
+        )?;
+    }
     let mut app = App::new(store);
     let mut smoke = smoke_dir.map(qa::Smoke::new).transpose()?;
     let (mut rl, thread) = raylib::init()
@@ -112,6 +172,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut capture_index = 0_u32;
 
     while !rl.window_should_close() {
+        app.poll_import();
         let real_dt = f64::from(rl.get_frame_time()).max(0.000_001);
         stats_time += real_dt;
         stats_frames += 1;
@@ -329,7 +390,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             capture_index += 1;
         }
         if let Some(qa) = smoke.as_mut()
-            && qa.after(&app, &mut rl, &thread)?
+            && qa.after(&mut app, &mut rl, &thread)?
         {
             break;
         }

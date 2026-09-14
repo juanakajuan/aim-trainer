@@ -12,6 +12,7 @@ pub enum Drill {
     Smooth,
     Strafes,
     Switching,
+    Imported,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +34,7 @@ impl Drill {
 
     pub fn name(self) -> &'static str {
         match self {
+            Self::Imported => "Imported scenario",
             Self::Six => "1wall 6targets",
             Self::Frenzy => "Tile Frenzy",
             Self::Micro => "Micro Precision",
@@ -44,7 +46,7 @@ impl Drill {
 
     pub fn mode(self) -> Mode {
         match self {
-            Self::Six | Self::Frenzy | Self::Micro => Mode::Click,
+            Self::Six | Self::Frenzy | Self::Micro | Self::Imported => Mode::Click,
             Self::Smooth | Self::Strafes => Mode::Track,
             Self::Switching => Mode::Switch,
         }
@@ -60,6 +62,7 @@ impl Drill {
 
     pub fn description(self) -> &'static str {
         match self {
+            Self::Imported => crate::scenario::LIMITS,
             Self::Six => {
                 "Six targets on one wall. Click each target once. Aim for clean stops and accurate flicks."
             }
@@ -87,12 +90,13 @@ impl Drill {
             Self::Frenzy => 3,
             Self::Micro => 5,
             Self::Smooth | Self::Strafes => 1,
-            Self::Switching => 4,
+            Self::Switching | Self::Imported => 4,
         }
     }
 
     pub fn radius(self) -> f32 {
         match self {
+            Self::Imported => 0.28,
             Self::Six => 0.34,
             Self::Frenzy => 0.65,
             Self::Micro => 0.17,
@@ -236,6 +240,11 @@ pub struct Target {
     pub health: f64,
     pub velocity: f32,
     pub turn_in: f64,
+    pub motion: Vec2,
+    pub jump_in: f32,
+    pub jumps_left: u32,
+    pub pause_in: f32,
+    pub spawn_in: f32,
 }
 
 #[derive(Default)]
@@ -247,7 +256,16 @@ pub struct Input {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScenarioIdentity {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenario: Option<ScenarioIdentity>,
     pub drill: Drill,
     pub score: f64,
     pub accuracy: f64,
@@ -259,7 +277,17 @@ pub struct RunResult {
 
 impl RunResult {
     pub fn valid(&self) -> bool {
-        self.score.is_finite()
+        (match (&self.scenario, self.drill) {
+            (Some(s), Drill::Imported) => {
+                s.id.len() == 32
+                    && s.id.bytes().all(|b| b.is_ascii_hexdigit())
+                    && !s.name.is_empty()
+                    && s.name.len() <= 80
+                    && !s.name.chars().any(char::is_control)
+            }
+            (None, drill) => drill != Drill::Imported,
+            _ => false,
+        }) && self.score.is_finite()
             && (0.0..=1_000_000.0).contains(&self.score)
             && self.accuracy.is_finite()
             && (0.0..=100.0).contains(&self.accuracy)
@@ -272,6 +300,8 @@ impl RunResult {
 }
 
 pub struct Session {
+    pub scenario: Option<crate::scenario::Scenario>,
+    shot_ready: f64,
     pub drill: Drill,
     pub free_play: bool,
     pub phase: Phase,
@@ -294,6 +324,8 @@ pub struct Session {
 impl Session {
     pub fn new(drill: Drill, free_play: bool, seed: u64) -> Self {
         let mut session = Self {
+            scenario: None,
+            shot_ready: 0.0,
             drill,
             free_play,
             phase: Phase::Countdown,
@@ -319,6 +351,23 @@ impl Session {
         session
     }
 
+    pub fn imported(scenario: crate::scenario::Scenario, free_play: bool, seed: u64) -> Self {
+        let mut session = Self::new(Drill::Imported, free_play, seed);
+        session.scenario = Some(scenario);
+        session.targets.clear();
+        for _ in 0..4 {
+            let target = session.make_target(None);
+            session.targets.push(target);
+        }
+        session
+    }
+
+    pub fn name(&self) -> &str {
+        self.scenario
+            .as_ref()
+            .map_or(self.drill.name(), |s| s.name.as_str())
+    }
+
     fn random(&mut self, min: f32, max: f32) -> f32 {
         self.rng ^= self.rng << 13;
         self.rng ^= self.rng >> 7;
@@ -328,6 +377,44 @@ impl Session {
     }
 
     fn make_target(&mut self, replace: Option<usize>) -> Target {
+        if let Some(scenario) = self.scenario.clone() {
+            let mut position = Vec3::from(scenario.spawns[0]);
+            for _ in 0..128 {
+                // Select a spawn without float-to-index casts.
+                self.random(0.0, 1.0);
+                let index = usize::try_from(
+                    self.rng % u64::try_from(scenario.spawns.len()).expect("bounded spawns"),
+                )
+                .expect("bounded index");
+                position = Vec3::from(scenario.spawns[index]);
+                if self.targets.iter().enumerate().all(|(i, t)| {
+                    Some(i) == replace || t.position.distance(position) > scenario.radius * 3.0
+                }) {
+                    break;
+                }
+            }
+            let direction = if self.random(0.0, 1.0) < 0.5 {
+                -1.0
+            } else {
+                1.0
+            };
+            return Target {
+                position,
+                radius: scenario.radius,
+                health: 1.0,
+                velocity: direction,
+                turn_in: f64::from(self.random(scenario.motion.turn[0], scenario.motion.turn[1])),
+                motion: Vec2::new(direction * scenario.motion.speed, scenario.motion.jump),
+                jump_in: self.random(scenario.motion.jump_time[0], scenario.motion.jump_time[1]),
+                jumps_left: scenario.motion.air_jumps,
+                pause_in: 0.0,
+                spawn_in: if replace.is_some() {
+                    scenario.respawn
+                } else {
+                    0.0
+                },
+            };
+        }
         let radius = self.drill.radius();
         let mut position = Vec3::ZERO;
         for _ in 0..128 {
@@ -344,6 +431,11 @@ impl Session {
             }
         }
         Target {
+            motion: Vec2::ZERO,
+            jump_in: 0.0,
+            jumps_left: 0,
+            pause_in: 0.0,
+            spawn_in: 0.0,
             position,
             radius,
             health: 0.3,
@@ -383,6 +475,9 @@ impl Session {
             .iter()
             .enumerate()
             .filter_map(|(i, target)| {
+                if target.spawn_in > 0.0 {
+                    return None;
+                }
                 let hit = if self.drill == Drill::Frenzy {
                     ray_box(
                         self.position,
@@ -429,7 +524,11 @@ impl Session {
         self.hit_flash = (self.hit_flash - active_dt).max(0.0);
         self.shot_flash = (self.shot_flash - active_dt).max(0.0);
         // Clicks use the current mouse aim, before the next movement step.
-        if input.click && self.drill.mode() == Mode::Click {
+        if input.click && self.drill.mode() == Mode::Click && self.elapsed + 1e-8 >= self.shot_ready
+        {
+            if let Some(scenario) = &self.scenario {
+                self.shot_ready = self.elapsed + f64::from(scenario.shot_interval);
+            }
             self.shots += 1;
             self.shot_flash = 0.045;
             if let Some(index) = self.nearest_hit() {
@@ -453,12 +552,19 @@ impl Session {
     fn step(&mut self, dt: f64, input: &Input) {
         self.elapsed += dt;
         let dt32 = dt as f32;
-        let move_axis = input.movement.normalize_or_zero();
+        let move_axis = if self.scenario.is_some() {
+            Vec2::ZERO
+        } else {
+            input.movement.normalize_or_zero()
+        };
         let forward = Vec3::new(self.yaw.sin(), 0.0, -self.yaw.cos());
         let right = Vec3::new(self.yaw.cos(), 0.0, self.yaw.sin());
         self.position += (right * move_axis.x + forward * move_axis.y) * dt32 * 4.0;
         self.position.x = self.position.x.clamp(-8.0, 8.0);
         self.position.z = self.position.z.clamp(-1.5, 8.0);
+        if self.scenario.is_some() {
+            self.step_pasu(dt32);
+        }
         for index in 0..self.targets.len() {
             let target = &mut self.targets[index];
             match self.drill {
@@ -506,6 +612,78 @@ impl Session {
         }
     }
 
+    fn step_pasu(&mut self, dt: f32) {
+        let Some(scenario) = self.scenario.clone() else {
+            return;
+        };
+        let m = &scenario.motion;
+        for index in 0..self.targets.len() {
+            if self.targets[index].spawn_in > 0.0 {
+                self.targets[index].spawn_in = (self.targets[index].spawn_in - dt).max(0.0);
+                continue;
+            }
+            if self.targets[index].turn_in <= 0.0 {
+                let turn = self.random(m.turn[0], m.turn[1]);
+                let pause = self.random(m.swap_pause[0], m.swap_pause[1]);
+                let target = &mut self.targets[index];
+                target.velocity *= -1.0;
+                target.turn_in = f64::from(turn);
+                target.pause_in = pause;
+            }
+            if self.targets[index].jump_in <= 0.0 {
+                let jump = self.random(0.0, 1.0) < m.jump_chance;
+                let interval = self.random(m.jump_time[0], m.jump_time[1]);
+                let target = &mut self.targets[index];
+                target.jump_in = interval;
+                if jump && target.jumps_left > 0 {
+                    target.motion.y = m.air_jump;
+                    target.jumps_left -= 1;
+                }
+            }
+            let t = &mut self.targets[index];
+            t.turn_in -= f64::from(dt);
+            t.jump_in -= dt;
+            t.pause_in = (t.pause_in - dt).max(0.0);
+            let desired = if t.pause_in > 0.0 {
+                0.0
+            } else {
+                t.velocity * m.speed
+            };
+            t.motion.x += (desired - t.motion.x).clamp(-m.acceleration * dt, m.acceleration * dt);
+            t.motion.x *= (-m.friction * dt).exp();
+            t.motion.y = (t.motion.y - m.gravity * dt).max(-m.terminal);
+            // Melee fields become continuous radial/vertical forces. Engine overlap timing differs.
+            for k in &scenario.knockers {
+                let delta = t.position - Vec3::from(k.position);
+                let distance = delta.length();
+                if distance < k.radius {
+                    let weight = (1.0 - distance / k.radius).clamp(0.0, 1.0);
+                    t.motion.x += delta.x.signum() * k.horizontal * weight * dt / k.interval;
+                    t.motion.y += k.vertical * weight * dt / k.interval;
+                }
+            }
+            t.motion.x = t.motion.x.clamp(-m.speed * 2.0, m.speed * 2.0);
+            t.motion.y = t.motion.y.clamp(-m.terminal, m.jump.max(m.air_jump) * 2.0);
+            t.position.x += t.motion.x * dt;
+            t.position.y += t.motion.y * dt;
+            // Safety bounds are explicit approximation, not imported brush collisions.
+            if t.position.x.abs() > 14.0 {
+                t.position.x = t.position.x.clamp(-14.0, 14.0);
+                t.velocity = -t.position.x.signum();
+                t.motion.x = t.velocity * m.speed;
+            }
+            if t.position.y < -3.0 {
+                t.position.y = -3.0;
+                t.motion.y = m.jump;
+                t.jumps_left = m.air_jumps;
+            }
+            if t.position.y > 10.0 {
+                t.position.y = 10.0;
+                t.motion.y = -t.motion.y.abs();
+            }
+        }
+    }
+
     pub fn accuracy(&self) -> f64 {
         match self.drill.mode() {
             Mode::Click => {
@@ -526,6 +704,9 @@ impl Session {
     }
 
     pub fn score(&self) -> f64 {
+        if let Some(scenario) = &self.scenario {
+            return scenario.score(self.hits, self.shots);
+        }
         match self.drill.mode() {
             Mode::Click => (f64::from(self.hits) * self.accuracy()).round(),
             Mode::Track => (self.on_target * 100.0).round(),
@@ -536,6 +717,10 @@ impl Session {
     pub fn result(&self, timestamp: u64) -> Option<RunResult> {
         (!self.free_play && self.phase == Phase::Finished).then(|| RunResult {
             drill: self.drill,
+            scenario: self.scenario.as_ref().map(|s| ScenarioIdentity {
+                id: s.id.clone(),
+                name: s.name.clone(),
+            }),
             score: self.score(),
             accuracy: self.accuracy(),
             hits: self.hits,
@@ -754,5 +939,74 @@ mod tests {
         assert!((settings.cm_per_turn() - 65.3143).abs() < 0.001);
         assert!((vertical_fov(90.0, 1.0) - 90.0).abs() < 0.001);
         assert!((vertical_fov(90.0, 16.0 / 9.0) - 58.7155).abs() < 0.001);
+    }
+}
+
+#[cfg(test)]
+mod imported_tests {
+    use super::*;
+    #[test]
+    fn pasu_movement_repulsion_cooldown_respawn_and_score() {
+        let scenario =
+            crate::scenario::parse(include_str!("../tests/fixtures/pasu.sce")).expect("fixture");
+        let mut s = Session::imported(scenario.clone(), false, 91);
+        s.phase = Phase::Running;
+        let start = s.targets[0].position;
+        for _ in 0..120 {
+            s.tick(1.0 / 120.0, &Input::default(), &Settings::default());
+        }
+        assert_eq!(s.targets.len(), 4);
+        assert!((s.targets[0].position.x - start.x).abs() > 0.1);
+        assert!((s.targets[0].position.y - start.y).abs() > 0.1);
+        s.targets[0].position = EYE - Vec3::Z * 10.0;
+        s.yaw = 0.0;
+        s.pitch = 0.0;
+        let fire = Input {
+            click: true,
+            ..Input::default()
+        };
+        s.tick(0.01, &fire, &Settings::default());
+        assert_eq!((s.hits, s.shots), (1, 1));
+        assert!(s.targets[0].spawn_in > 0.0);
+        s.tick(0.01, &fire, &Settings::default());
+        assert_eq!(s.shots, 1);
+        assert_eq!(s.score(), 10.0);
+        let before = s.position;
+        s.tick(
+            0.2,
+            &Input {
+                movement: Vec2::ONE,
+                ..Input::default()
+            },
+            &Settings::default(),
+        );
+        assert_eq!(s.position, before);
+        assert_eq!(s.targets[0].spawn_in, 0.0);
+        // The source Knocker profiles change motion, beyond the hard safety bounds.
+        let mut no_knock = s.scenario.clone().expect("scenario");
+        for k in &mut no_knock.knockers {
+            k.horizontal = 0.0;
+            k.vertical = 0.0;
+        }
+        let mut a = Session::imported(scenario, false, 42);
+        let mut b = Session::imported(no_knock, false, 42);
+        a.phase = Phase::Running;
+        b.phase = Phase::Running;
+        a.targets[0].position = Vec3::new(10.0, 3.0, -10.0);
+        b.targets[0].position = a.targets[0].position;
+        for _ in 0..120 {
+            a.tick(1.0 / 120.0, &Input::default(), &Settings::default());
+            b.tick(1.0 / 120.0, &Input::default(), &Settings::default());
+        }
+        assert!(a.targets[0].position.x < b.targets[0].position.x);
+        for _ in 0..300 {
+            s.tick(0.25, &Input::default(), &Settings::default());
+        }
+        assert_eq!(s.phase, Phase::Finished);
+        assert_eq!(s.elapsed, 60.0);
+        let result = s.result(1).expect("challenge result");
+        assert!(result.valid());
+        assert_eq!(result.drill, Drill::Imported);
+        assert!(result.scenario.is_some());
     }
 }

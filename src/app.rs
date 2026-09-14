@@ -20,12 +20,14 @@ pub enum Filter {
     Clicking,
     Tracking,
     Switching,
+    Imports,
 }
 
 impl Filter {
     fn accepts(self, drill: Drill) -> bool {
         match self {
             Self::All => true,
+            Self::Imports => false,
             Self::Clicking => drill.mode() == Mode::Click,
             Self::Tracking => drill.mode() == Mode::Track,
             Self::Switching => drill.mode() == Mode::Switch,
@@ -36,6 +38,8 @@ impl Filter {
 #[derive(Clone, Copy)]
 pub enum Action {
     None,
+    Import,
+    RemoveImport,
     Start(bool),
     Restart,
     Resume,
@@ -51,6 +55,9 @@ pub struct App {
     pub screen: Screen,
     settings_return: Screen,
     pub selected: Drill,
+    pub selected_import: Option<usize>,
+    import_page: usize,
+    picker: Option<crate::picker::Picker>,
     pub preview: Session,
     pub session: Session,
     filter: Filter,
@@ -67,6 +74,9 @@ impl App {
             screen: Screen::Library,
             settings_return: Screen::Library,
             selected: Drill::Six,
+            selected_import: None,
+            import_page: 0,
+            picker: None,
             preview: Session::new(Drill::Six, true, 712),
             session: Session::new(Drill::Six, false, 712),
             filter: Filter::All,
@@ -76,12 +86,83 @@ impl App {
             frame_ms: 0.0,
         }
     }
+    pub fn select_import(&mut self, index: usize) {
+        if let Some(scenario) = self.store.scenarios.get(index) {
+            self.selected = Drill::Imported;
+            self.selected_import = Some(index);
+            self.preview = Session::imported(scenario.clone(), true, 712);
+            self.filter = Filter::Imports;
+            self.import_page = index / 6;
+        }
+    }
+
+    pub fn poll_import(&mut self) {
+        let Some(result) = self.picker.as_mut().and_then(crate::picker::Picker::poll) else {
+            return;
+        };
+        self.picker = None;
+        match result {
+            Ok(Some(path)) => self.import_path(&path),
+            Ok(None) => {}
+            Err(error) => self.store.notice = Some(error),
+        }
+    }
+
+    pub fn import_path(&mut self, path: &std::path::Path) {
+        match self.store.import(path) {
+            Ok(id) => {
+                if let Some(index) = self
+                    .store
+                    .scenarios
+                    .iter()
+                    .position(|scenario| scenario.id == id)
+                {
+                    self.select_import(index);
+                    self.screen = Screen::Library;
+                    self.store.notice =
+                        Some("Scenario imported. Read the limits before play.".into());
+                }
+            }
+            Err(error) => self.store.notice = Some(format!("Import failed: {error}")),
+        }
+    }
+
     pub fn active(&self) -> bool {
         self.screen == Screen::Play
             && matches!(self.session.phase, Phase::Countdown | Phase::Running)
     }
     pub fn act(&mut self, action: Action) {
+        if self.picker.is_some() {
+            return;
+        }
         match action {
+            Action::RemoveImport => {
+                let Some(scenario) = self
+                    .selected_import
+                    .and_then(|index| self.store.scenarios.get(index))
+                else {
+                    return;
+                };
+                let id = scenario.id.clone();
+                match self.store.remove_import(&id) {
+                    Ok(()) => {
+                        self.selected_import = None;
+                        self.import_page = 0;
+                        self.selected = Drill::Six;
+                        self.preview = Session::new(Drill::Six, true, 712);
+                        self.store.notice =
+                            Some("Scenario removed. Source file and results kept.".into());
+                    }
+                    Err(error) => self.store.notice = Some(format!("Remove failed: {error}")),
+                }
+            }
+            Action::Import => {
+                self.session.pause();
+                match crate::picker::Picker::open() {
+                    Ok(picker) => self.picker = Some(picker),
+                    Err(error) => self.store.notice = Some(error),
+                }
+            }
             Action::Start(free) => {
                 self.session = Session::new(
                     self.selected,
@@ -89,6 +170,20 @@ impl App {
                     timestamp() ^ u64::from(std::process::id()),
                 );
                 self.best_before = self.store.best(self.selected);
+                if self.selected == Drill::Imported {
+                    let Some(scenario) = self
+                        .selected_import
+                        .and_then(|i| self.store.scenarios.get(i))
+                    else {
+                        return;
+                    };
+                    self.session = Session::imported(
+                        scenario.clone(),
+                        free,
+                        timestamp() ^ u64::from(std::process::id()),
+                    );
+                    self.best_before = self.store.best_import(&scenario.id);
+                }
                 self.recorded = false;
                 self.screen = Screen::Play;
             }
@@ -191,6 +286,17 @@ impl App {
     fn library<D: RaylibDraw>(&mut self, ui: &mut Ui<'_, D>, preview: &RenderTexture2D) -> Action {
         let mut action = Action::None;
         ui.strong("Scenarios", 36.0, 114.0, 31.0, TEXT);
+        if self.picker.is_some() {
+            ui.text(
+                "Choose a .sce file in the file picker...",
+                505.0,
+                131.0,
+                15.0,
+                MUTED,
+            );
+        } else if ui.button("IMPORT .sce", rect(693.0, 116.0, 197.0, 40.0), false) {
+            action = Action::Import;
+        }
         ui.text(
             "Choose a drill. Build speed, control and accuracy.",
             36.0,
@@ -203,6 +309,7 @@ impl App {
             (Filter::Clicking, "CLICKING"),
             (Filter::Tracking, "TRACKING"),
             (Filter::Switching, "SWITCHING"),
+            (Filter::Imports, "IMPORTED"),
         ];
         for (i, (filter, label)) in filters.into_iter().enumerate() {
             if ui.tab(
@@ -213,7 +320,7 @@ impl App {
                 self.filter = filter;
             }
         }
-        ui.text("6 LOCAL SCENARIOS", 714.0, 218.0, 12.0, MUTED);
+
         ui.panel(rect(36.0, 267.0, 854.0, 562.0));
         ui.text("SCENARIO", 62.0, 282.0, 12.0, MUTED);
         ui.text("TYPE", 516.0, 282.0, 12.0, MUTED);
@@ -270,6 +377,63 @@ impl App {
                 self.preview = Session::new(drill, true, 712);
             }
         }
+        if self.filter == Filter::Imports {
+            let mut chosen = None;
+            for (row, (index, scenario)) in self
+                .store
+                .scenarios
+                .iter()
+                .enumerate()
+                .skip(self.import_page * 6)
+                .take(6)
+                .enumerate()
+            {
+                let y = 315.0 + f32::from(u16::try_from(row).expect("six rows")) * 70.0;
+                let area = rect(37.0, y, 852.0, 69.0);
+                if self.selected == Drill::Imported && self.selected_import == Some(index) {
+                    ui.rounded(area, 8.0, SELECTED);
+                }
+                ui.text(&scenario.name, 62.0, y + 12.0, 16.0, TEXT);
+                ui.text(
+                    "4 moving targets / 60 seconds / local approximation",
+                    62.0,
+                    y + 39.0,
+                    12.0,
+                    MUTED,
+                );
+                ui.strong(
+                    &format!("{:.2}", self.store.best_import(&scenario.id)),
+                    762.0,
+                    y + 30.0,
+                    18.0,
+                    ACCENT,
+                );
+                if ui.clicked(area) {
+                    chosen = Some(index);
+                }
+            }
+            if let Some(index) = chosen {
+                self.select_import(index);
+            }
+            if self.store.scenarios.is_empty() {
+                ui.wrapped("Select IMPORT .sce to add a local scenario. Or use aim-trainer --import-scenario /path/to/file.sce.", 62.0, 330.0, 790.0, 17.0, MUTED);
+            }
+            if self.selected == Drill::Imported
+                && self.selected_import.is_some()
+                && ui.button("REMOVE SELECTED", rect(335.0, 770.0, 245.0, 35.0), false)
+            {
+                action = Action::RemoveImport;
+            }
+            if self.import_page > 0 && ui.button("PREVIOUS", rect(62.0, 770.0, 160.0, 35.0), false)
+            {
+                self.import_page -= 1;
+            }
+            if (self.import_page + 1) * 6 < self.store.scenarios.len()
+                && ui.button("NEXT", rect(700.0, 770.0, 160.0, 35.0), false)
+            {
+                self.import_page += 1;
+            }
+        }
         ui.panel(rect(918.0, 113.0, 486.0, 716.0));
         ui.text("SCENARIO PREVIEW", 942.0, 134.0, 12.0, MUTED);
         ui.draw.draw_texture_pro(
@@ -282,7 +446,7 @@ impl App {
         );
         ui.fill(rect(954.0, 178.0, 113.0, 25.0), Color::new(24, 24, 24, 230));
         ui.text(self.selected.category(), 963.0, 184.0, 11.0, ACCENT);
-        ui.strong(self.selected.name(), 942.0, 435.0, 27.0, TEXT);
+        ui.wrapped(self.preview.name(), 942.0, 429.0, 430.0, 22.0, TEXT);
         ui.wrapped(
             self.selected.description(),
             942.0,
@@ -291,7 +455,34 @@ impl App {
             16.0,
             MUTED,
         );
-        ui.text(self.selected.scoring(), 942.0, 667.0, 13.0, MUTED);
+        if let Some(scenario) = &self.preview.scenario {
+            let multiplier = if !scenario.accuracy_multiplier {
+                ""
+            } else if scenario.sqrt_accuracy {
+                " x sqrt(accuracy)"
+            } else {
+                " x accuracy"
+            };
+            ui.text(
+                &format!("Score = kills x {}{}", scenario.kill_score, multiplier),
+                942.0,
+                657.0,
+                13.0,
+                MUTED,
+            );
+            ui.text(
+                &format!(
+                    "FOV {}-{} / shot delay {}s",
+                    scenario.fov[0], scenario.fov[1], scenario.shot_interval
+                ),
+                942.0,
+                680.0,
+                12.0,
+                MUTED,
+            );
+        } else {
+            ui.text(self.selected.scoring(), 942.0, 667.0, 13.0, MUTED);
+        }
         if ui.button("CHALLENGE", rect(942.0, 712.0, 438.0, 46.0), true) {
             action = Action::Start(false);
         }
@@ -492,7 +683,16 @@ impl App {
         for (i, result) in self.store.results.iter().rev().take(8).enumerate() {
             let y = 414.0 + i as f32 * 45.0;
             ui.fill(rect(61.0, y + 33.0, 1316.0, 1.0), BORDER);
-            ui.text(result.drill.name(), 61.0, y, 17.0, TEXT);
+            ui.text(
+                result
+                    .scenario
+                    .as_ref()
+                    .map_or(result.drill.name(), |s| s.name.as_str()),
+                61.0,
+                y,
+                15.0,
+                TEXT,
+            );
             ui.strong(&format!("{:.0}", result.score), 667.0, y, 18.0, ACCENT);
             ui.text(&format!("{:.1}%", result.accuracy), 845.0, y, 17.0, TEXT);
             ui.text(
@@ -530,12 +730,7 @@ impl App {
             );
             ui.panel(rect(475.0, 199.0, 490.0, 481.0));
             ui.center("PAUSED", rect(475.0, 231.0, 490.0, 50.0), 36.0, TEXT);
-            ui.center(
-                session.drill.name(),
-                rect(475.0, 292.0, 490.0, 35.0),
-                17.0,
-                MUTED,
-            );
+            ui.center(session.name(), rect(475.0, 292.0, 490.0, 35.0), 17.0, MUTED);
             if ui.button("RESUME", rect(520.0, 361.0, 400.0, 52.0), true) {
                 return Action::Resume;
             }
@@ -562,7 +757,7 @@ impl App {
                 10.0,
                 Color::new(18, 18, 18, 223),
             );
-            ui.strong(session.drill.name(), 49.0, 42.0, 19.0, TEXT);
+            ui.strong(session.name(), 49.0, 42.0, 19.0, TEXT);
             ui.text(
                 if session.free_play {
                     "FREE PLAY"
@@ -631,7 +826,11 @@ impl App {
                 Color::new(18, 18, 18, 180),
             );
             ui.center(
-                "WASD  Move     LMB  Fire     R  Restart     Esc  Pause",
+                if session.scenario.is_some() {
+                    "Fixed player    LMB Fire    R Restart    Esc Pause"
+                } else {
+                    "WASD  Move     LMB  Fire     R  Restart     Esc  Pause"
+                },
                 rect(499.0, 846.0, 442.0, 30.0),
                 11.0,
                 TEXT,
@@ -702,7 +901,7 @@ impl App {
             14.0,
             MUTED,
         );
-        ui.center(s.drill.name(), rect(350.0, 208.0, 740.0, 46.0), 28.0, TEXT);
+        ui.center(s.name(), rect(350.0, 208.0, 740.0, 46.0), 28.0, TEXT);
         ui.center(
             &format!("{:.0}", s.score()),
             rect(350.0, 274.0, 740.0, 95.0),
@@ -754,7 +953,10 @@ impl App {
             .results
             .iter()
             .rev()
-            .filter(|r| r.drill == s.drill)
+            .filter(|r| {
+                r.drill == s.drill
+                    && r.scenario.as_ref().map(|v| &v.id) == s.scenario.as_ref().map(|v| &v.id)
+            })
             .take(14)
             .map(|r| r.score)
             .collect();

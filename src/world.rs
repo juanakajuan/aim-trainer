@@ -43,113 +43,139 @@ impl World {
             vector(session.position),
             vector(session.position + session.direction()),
             Vector3::new(0.0, 1.0, 0.0),
-            vertical_fov(settings.fov, aspect),
+            vertical_fov(
+                session
+                    .scenario
+                    .as_ref()
+                    .map_or(settings.fov, |s| settings.fov.clamp(s.fov[0], s.fov[1])),
+                aspect,
+            ),
         );
         let mut scene = draw.begin_mode3D(camera);
-        scene.draw_cube(
-            Vector3::new(0.0, -0.12, -0.5),
-            20.0,
-            0.2,
-            23.0,
-            Color::new(120, 128, 137, 255),
-        );
-        scene.draw_cube(
-            Vector3::new(0.0, 4.0, -11.0),
-            20.0,
-            8.0,
-            0.15,
-            Color::new(163, 170, 178, 255),
-        );
-        scene.draw_cube(
-            Vector3::new(-10.0, 4.0, -0.5),
-            0.15,
-            8.0,
-            23.0,
-            Color::new(135, 144, 154, 255),
-        );
-        scene.draw_cube(
-            Vector3::new(10.0, 4.0, -0.5),
-            0.15,
-            8.0,
-            23.0,
-            Color::new(145, 153, 163, 255),
-        );
-        scene.draw_cube(
-            Vector3::new(0.0, 8.0, -0.5),
-            20.0,
-            0.15,
-            23.0,
-            Color::new(179, 185, 192, 255),
-        );
-        scene.draw_cube(
-            Vector3::new(0.0, 4.0, 11.0),
-            20.0,
-            8.0,
-            0.15,
-            Color::new(143, 153, 163, 255),
-        );
-        let floor_line = Color::new(101, 110, 121, 255);
-        let wall_line = Color::new(144, 153, 162, 255);
-        for x in -10..=10 {
-            let x = x as f32;
-            scene.draw_line3D(
-                Vector3::new(x, 0.001, -10.9),
-                Vector3::new(x, 0.001, 10.9),
-                floor_line,
+        if session.scenario.is_some() {
+            scene.draw_cube(
+                Vector3::new(0.0, 3.0, -21.0),
+                42.0,
+                30.0,
+                0.15,
+                Color::new(163, 170, 178, 255),
             );
-            scene.draw_line3D(
-                Vector3::new(x, 0.0, -10.91),
-                Vector3::new(x, 8.0, -10.91),
-                wall_line,
+            for x in -20..=20 {
+                scene.draw_line3D(
+                    Vector3::new(f32::from(i16::try_from(x).expect("grid")), -12.0, -20.9),
+                    Vector3::new(f32::from(i16::try_from(x).expect("grid")), 18.0, -20.9),
+                    Color::new(144, 153, 162, 255),
+                );
+            }
+        } else {
+            scene.draw_cube(
+                Vector3::new(0.0, -0.12, -0.5),
+                20.0,
+                0.2,
+                23.0,
+                Color::new(120, 128, 137, 255),
+            );
+            scene.draw_cube(
+                Vector3::new(0.0, 4.0, -11.0),
+                20.0,
+                8.0,
+                0.15,
+                Color::new(163, 170, 178, 255),
+            );
+            scene.draw_cube(
+                Vector3::new(-10.0, 4.0, -0.5),
+                0.15,
+                8.0,
+                23.0,
+                Color::new(135, 144, 154, 255),
+            );
+            scene.draw_cube(
+                Vector3::new(10.0, 4.0, -0.5),
+                0.15,
+                8.0,
+                23.0,
+                Color::new(145, 153, 163, 255),
+            );
+            scene.draw_cube(
+                Vector3::new(0.0, 8.0, -0.5),
+                20.0,
+                0.15,
+                23.0,
+                Color::new(179, 185, 192, 255),
+            );
+            scene.draw_cube(
+                Vector3::new(0.0, 4.0, 11.0),
+                20.0,
+                8.0,
+                0.15,
+                Color::new(143, 153, 163, 255),
+            );
+            let floor_line = Color::new(101, 110, 121, 255);
+            let wall_line = Color::new(144, 153, 162, 255);
+            for x in -10..=10 {
+                let x = x as f32;
+                scene.draw_line3D(
+                    Vector3::new(x, 0.001, -10.9),
+                    Vector3::new(x, 0.001, 10.9),
+                    floor_line,
+                );
+                scene.draw_line3D(
+                    Vector3::new(x, 0.0, -10.91),
+                    Vector3::new(x, 8.0, -10.91),
+                    wall_line,
+                );
+            }
+            for z in -10..=10 {
+                let z = z as f32;
+                scene.draw_line3D(
+                    Vector3::new(-9.91, 0.001, z),
+                    Vector3::new(9.91, 0.001, z),
+                    floor_line,
+                );
+                scene.draw_line3D(
+                    Vector3::new(-9.91, 0.0, z),
+                    Vector3::new(-9.91, 8.0, z),
+                    floor_line,
+                );
+                scene.draw_line3D(
+                    Vector3::new(9.91, 0.0, z),
+                    Vector3::new(9.91, 8.0, z),
+                    floor_line,
+                );
+            }
+            for y in 1..8 {
+                let y = y as f32;
+                scene.draw_line3D(
+                    Vector3::new(-10.0, y, -10.91),
+                    Vector3::new(10.0, y, -10.91),
+                    wall_line,
+                );
+                scene.draw_line3D(
+                    Vector3::new(-9.91, y, -11.0),
+                    Vector3::new(-9.91, y, 11.0),
+                    floor_line,
+                );
+                scene.draw_line3D(
+                    Vector3::new(9.91, y, -11.0),
+                    Vector3::new(9.91, y, 11.0),
+                    floor_line,
+                );
+            }
+            // Thin base rails give a stable horizon without distracting from targets.
+            scene.draw_cube(
+                Vector3::new(0.0, 0.12, -10.85),
+                20.0,
+                0.24,
+                0.1,
+                Color::new(73, 85, 98, 255),
             );
         }
-        for z in -10..=10 {
-            let z = z as f32;
-            scene.draw_line3D(
-                Vector3::new(-9.91, 0.001, z),
-                Vector3::new(9.91, 0.001, z),
-                floor_line,
-            );
-            scene.draw_line3D(
-                Vector3::new(-9.91, 0.0, z),
-                Vector3::new(-9.91, 8.0, z),
-                floor_line,
-            );
-            scene.draw_line3D(
-                Vector3::new(9.91, 0.0, z),
-                Vector3::new(9.91, 8.0, z),
-                floor_line,
-            );
-        }
-        for y in 1..8 {
-            let y = y as f32;
-            scene.draw_line3D(
-                Vector3::new(-10.0, y, -10.91),
-                Vector3::new(10.0, y, -10.91),
-                wall_line,
-            );
-            scene.draw_line3D(
-                Vector3::new(-9.91, y, -11.0),
-                Vector3::new(-9.91, y, 11.0),
-                floor_line,
-            );
-            scene.draw_line3D(
-                Vector3::new(9.91, y, -11.0),
-                Vector3::new(9.91, y, 11.0),
-                floor_line,
-            );
-        }
-        // Thin base rails give a stable horizon without distracting from targets.
-        scene.draw_cube(
-            Vector3::new(0.0, 0.12, -10.85),
-            20.0,
-            0.24,
-            0.1,
-            Color::new(73, 85, 98, 255),
-        );
         let mut lit = scene.begin_shader_mode(&mut self.shader);
         let color = TARGET_COLORS[settings.target_color];
         for target in &session.targets {
+            if target.spawn_in > 0.0 {
+                continue;
+            }
             if session.drill == Drill::Frenzy {
                 lit.draw_cube(
                     vector(target.position),
