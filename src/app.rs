@@ -160,15 +160,6 @@ impl App {
             if ui.button("EXIT", rect(1333.0, 24.0, 74.0, 36.0), false) {
                 action = Action::Quit;
             }
-            ui.fill(rect(0.0, 852.0, 1440.0, 48.0), PANEL);
-            ui.text(
-                "ENTER  Challenge     F2  Settings     F11  Fullscreen",
-                36.0,
-                868.0,
-                13.0,
-                MUTED,
-            );
-            ui.text("Native OpenGL  /  v0.2", 1190.0, 868.0, 13.0, MUTED);
         }
         let page_action = match self.screen {
             Screen::Library => self.library(ui, preview),
