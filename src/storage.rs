@@ -30,6 +30,7 @@ fn xdg_path(variable: &str, fallback: &str) -> PathBuf {
                 .unwrap_or_else(env::temp_dir)
                 .join(fallback)
         })
+        // Keep the original directory name so existing settings and results still load.
         .join("aim-room")
 }
 
@@ -126,7 +127,7 @@ mod tests {
 
     #[test]
     fn settings_and_results_survive_restart_and_bad_data_does_not_crash() {
-        let dir = env::temp_dir().join(format!("aim-room-test-{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("aim-trainer-test-{}", std::process::id()));
         let mut store = Store::from_paths(dir.join("config"), dir.join("state"));
         store.settings.sensitivity = 2.35;
         store.save_settings();

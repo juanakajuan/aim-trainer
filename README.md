@@ -1,24 +1,24 @@
-# Aim Room
+# Aim Trainer
 
 A native Linux aim trainer inspired by the core Kovaak's sandbox. Written in Rust with raylib, GLFW and OpenGL. Runs on CachyOS, including KDE Wayland through XWayland. No browser, web server, account or network connection is needed.
 
 ## Start
 
-Open **Aim Room** from the application menu after installation, or run:
+From the project directory, build and run:
 
 ```sh
 ./run.sh
 ```
 
-The standalone executable is `target/release/aim-room`. Fonts, sounds and shaders are built into it. You can move the executable without its source folder.
+The script runs `cargo run --release --locked` and passes arguments to the app. Cargo rebuilds when source files change.
 
-To build and install for your user:
+To build only:
 
 ```sh
-./scripts/install.sh
+cargo build --release --locked
 ```
 
-This installs `~/.local/bin/aim-room` and an application menu entry. It does not need root access.
+The standalone executable is `target/release/aim-trainer`. Fonts, sounds and shaders are built into it. You can move the executable without its source folder.
 
 ## Practice
 
@@ -46,7 +46,7 @@ Clicking score = hits × 100 × accuracy fraction. Tracking score = seconds on t
 | F2 | Settings |
 | F3 | Show or hide FPS and average frame time |
 | F11 | Toggle borderless fullscreen |
-| F12 | Save a screenshot to `~/Pictures/Aim Room/` |
+| F12 | Save a screenshot to `~/Pictures/Aim Trainer/` |
 
 ## Settings and data
 
@@ -55,6 +55,8 @@ Click a numeric field, type the value, then press Enter. Settings include sensit
 Sensitivity uses degrees per mouse count: Source/Quake `0.022`, Valorant `0.07`, Overwatch `0.0066`. FOV is the actual horizontal angle at the current window aspect ratio. It is not a game-specific FOV scale.
 
 GLFW enables raw mouse motion during capture if the system supports it. Aim has no smoothing or interpolation. The default frame limit is 360 FPS, with VSync off. Menu screens use a 60 FPS limit. The desktop compositor or driver can still limit presentation. The timing display measures frame intervals, not physical mouse-to-screen latency.
+
+Existing data keeps the `aim-room` directory name to preserve saved settings and results.
 
 - Settings: `$XDG_CONFIG_HOME/aim-room/settings.json`, default `~/.config/aim-room/settings.json`.
 - Last 100 challenge results: `$XDG_STATE_HOME/aim-room/results.json`, default `~/.local/state/aim-room/results.json`.
@@ -68,14 +70,14 @@ Needs Rust 1.88 or later, CMake, a C compiler, Clang/libclang, OpenGL and X11 de
 cargo test --locked
 cargo clippy --all-targets --locked -- -D warnings
 cargo build --release --locked
-./target/release/aim-room --smoke-test artifacts/native-qa
+./target/release/aim-trainer --smoke-test artifacts/native-qa
 ```
 
 The six unit tests cover hit geometry, same-frame aim and fire, scores, challenge timing, pause, free play, sensitivity/FOV and disk saves. The native smoke check opens a real GPU window, drives all six drills with controlled inputs, captures screens and checks saved results after reload. It uses an isolated save directory and an accelerated simulation clock. It does not measure human aim or physical input latency.
 
 ## Scope and sources
 
-This is an independent recreation of the basic training loop. The UI, room, sounds and scenario logic are local implementations. It has no Kovaak's assets, exact scenario files, Workshop, online leaderboard, scenario editor or advanced weapon simulation. The old browser implementation remains in Git history.
+This is an independent recreation of the basic training loop. The UI, room, sounds and scenario logic are local implementations. It has no Kovaak's assets, exact scenario files, Workshop, online leaderboard, scenario editor or advanced weapon simulation.
 
 Reference: [Kovaak's sandbox and practice guidance](https://www.kovaak.com/fpsaimtrainer/), [sensitivity scales](https://www.kovaak.com/sensitivity-matcher/), and [GLFW raw mouse input](https://www.glfw.org/docs/latest/input_guide.html#raw_mouse_motion).
 

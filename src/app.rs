@@ -133,7 +133,7 @@ impl App {
             ui.draw.draw_circle(51, 42, 4.0, ACCENT);
             ui.fill(rect(49.0, 21.0, 3.0, 11.0), ACCENT);
             ui.fill(rect(30.0, 40.0, 11.0, 3.0), ACCENT);
-            ui.strong("AIM ROOM", 82.0, 22.0, 28.0, TEXT);
+            ui.strong("AIM TRAINER", 82.0, 22.0, 28.0, TEXT);
             ui.text("SANDBOX", 84.0, 54.0, 11.0, MUTED);
             if ui.tab(
                 "SCENARIOS",

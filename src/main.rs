@@ -18,7 +18,7 @@ use ui::{Ui, UiInput};
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("Aim Room: {error}");
+        eprintln!("Aim Trainer: {error}");
         std::process::exit(1);
     }
 }
@@ -45,7 +45,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         )),
         Some("--help" | "-h") => {
             println!(
-                "Aim Room - native Linux aim trainer\n\nRun: aim-room\nVerify GPU and gameplay: aim-room --smoke-test <output-directory>"
+                "Aim Trainer - native Linux aim trainer\n\nRun: aim-trainer\nVerify GPU and gameplay: aim-trainer --smoke-test <output-directory>"
             );
             return Ok(());
         }
@@ -60,7 +60,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut smoke = smoke_dir.map(qa::Smoke::new).transpose()?;
     let (mut rl, thread) = raylib::init()
         .size(1440, 900)
-        .title("Aim Room")
+        .title("Aim Trainer")
         .resizable()
         .msaa_4x()
         .log_level(TraceLogLevel::LOG_WARNING)
@@ -317,10 +317,10 @@ fn run() -> Result<(), Box<dyn Error>> {
             let dir = env::var_os("HOME")
                 .map(PathBuf::from)
                 .unwrap_or_else(env::temp_dir)
-                .join("Pictures/Aim Room");
+                .join("Pictures/Aim Trainer");
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!(
-                "aim-room-{}-{capture_index}.png",
+                "aim-trainer-{}-{capture_index}.png",
                 storage::timestamp()
             ));
             if let Err(error) = screenshot(&rl, &thread, &path) {
