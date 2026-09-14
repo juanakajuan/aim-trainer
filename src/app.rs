@@ -171,11 +171,16 @@ impl App {
             action = page_action;
         }
         if let Some(message) = &self.store.notice {
-            ui.fill(rect(32.0, 794.0, 1376.0, 42.0), SELECTED);
+            let notice_y = if self.screen == Screen::Library {
+                842.0
+            } else {
+                794.0
+            };
+            ui.fill(rect(32.0, notice_y, 1376.0, 42.0), SELECTED);
             ui.text(
                 &message.chars().take(125).collect::<String>(),
                 46.0,
-                807.0,
+                notice_y + 13.0,
                 13.0,
                 ACCENT,
             );
