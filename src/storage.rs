@@ -130,6 +130,7 @@ mod tests {
         let dir = env::temp_dir().join(format!("aim-trainer-test-{}", std::process::id()));
         let mut store = Store::from_paths(dir.join("config"), dir.join("state"));
         store.settings.sensitivity = 2.35;
+        store.settings.scale = crate::model::SensScale::MarvelRivals;
         store.save_settings();
         store.record(RunResult {
             drill: Drill::Six,
@@ -142,6 +143,7 @@ mod tests {
         });
         let loaded = Store::from_paths(dir.join("config"), dir.join("state"));
         assert_eq!(loaded.settings.sensitivity, 2.35);
+        assert_eq!(loaded.settings.scale, crate::model::SensScale::MarvelRivals);
         assert_eq!(loaded.best(Drill::Six), 250.0);
         fs::write(dir.join("config/settings.json"), b"invalid json").expect("write fixture");
         let recovered = Store::from_paths(dir.join("config"), dir.join("state"));

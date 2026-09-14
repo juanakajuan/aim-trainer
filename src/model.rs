@@ -125,6 +125,7 @@ pub enum SensScale {
     Source,
     Valorant,
     Overwatch,
+    MarvelRivals,
 }
 
 impl SensScale {
@@ -133,6 +134,7 @@ impl SensScale {
             Self::Source => "Source / Quake",
             Self::Valorant => "Valorant",
             Self::Overwatch => "Overwatch",
+            Self::MarvelRivals => "Marvel Rivals",
         }
     }
     pub fn yaw(self) -> f32 {
@@ -140,13 +142,15 @@ impl SensScale {
             Self::Source => 0.022,
             Self::Valorant => 0.07,
             Self::Overwatch => 0.0066,
+            Self::MarvelRivals => 0.0175,
         }
     }
     pub fn next(self) -> Self {
         match self {
             Self::Source => Self::Valorant,
             Self::Valorant => Self::Overwatch,
-            Self::Overwatch => Self::Source,
+            Self::Overwatch => Self::MarvelRivals,
+            Self::MarvelRivals => Self::Source,
         }
     }
 }
@@ -746,6 +750,8 @@ mod tests {
         assert_eq!(settings.target_color, 0);
         assert_eq!(settings.fps_limit, 360);
         assert!((settings.cm_per_turn() - 51.95).abs() < 0.01);
+        settings.scale = SensScale::MarvelRivals;
+        assert!((settings.cm_per_turn() - 65.3143).abs() < 0.001);
         assert!((vertical_fov(90.0, 1.0) - 90.0).abs() < 0.001);
         assert!((vertical_fov(90.0, 16.0 / 9.0) - 58.7155).abs() < 0.001);
     }

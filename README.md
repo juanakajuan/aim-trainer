@@ -50,9 +50,9 @@ Clicking score = hits × 100 × accuracy fraction. Tracking score = seconds on t
 
 ## Settings and data
 
-Click a numeric field, type the value, then press Enter. Settings include sensitivity, three sensitivity scales, mouse DPI, horizontal FOV, target and crosshair colors, crosshair size/gap, sound volume, fullscreen, VSync and frame limit. Changing the sensitivity scale converts the value to preserve turning speed within the allowed range. DPI is used only to calculate cm/360.
+Click a numeric field, type the value, then press Enter. Settings include sensitivity, four sensitivity scales, mouse DPI, horizontal FOV, target and crosshair colors, crosshair size/gap, sound volume, fullscreen, VSync and frame limit. Changing the sensitivity scale converts the value to preserve turning speed within the allowed range. DPI is used only to calculate cm/360.
 
-Sensitivity uses degrees per mouse count: Source/Quake `0.022`, Valorant `0.07`, Overwatch `0.0066`. FOV is the actual horizontal angle at the current window aspect ratio. It is not a game-specific FOV scale.
+Sensitivity uses degrees per mouse count: Source/Quake `0.022`, Valorant `0.07`, Overwatch `0.0066`, Marvel Rivals `0.0175`. FOV is the actual horizontal angle at the current window aspect ratio. It is not a game-specific FOV scale.
 
 GLFW enables raw mouse motion during capture if the system supports it. Aim has no smoothing or interpolation. The default frame limit is 360 FPS, with VSync off. Menu screens use a 60 FPS limit. The desktop compositor or driver can still limit presentation. The timing display measures frame intervals, not physical mouse-to-screen latency.
 
