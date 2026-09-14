@@ -40,6 +40,19 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
     let smoke_dir = match args.next().as_deref() {
         None => None,
+        Some("--import-scenario") => {
+            let path = args.next().ok_or("--import-scenario needs a .sce path")?;
+            if args.next().is_some() {
+                return Err("Unexpected import argument".into());
+            }
+            let mut store = storage::Store::load();
+            let id = store.import(Path::new(&path))?;
+            println!(
+                "Saved scenario {id}. Start the app and select IMPORTED.\n{}",
+                scenario::LIMITS
+            );
+            return Ok(());
+        }
         Some("--inspect-scenario") => {
             let path = args.next().ok_or("--inspect-scenario needs a .sce path")?;
             let scenario = scenario::load(Path::new(&path))?;
@@ -60,17 +73,48 @@ fn run() -> Result<(), Box<dyn Error>> {
         )),
         Some("--help" | "-h") => {
             println!(
-                "Aim Trainer - native Linux aim trainer\n\nRun: aim-trainer\nVerify GPU and gameplay: aim-trainer --smoke-test <output-directory>"
+                "Aim Trainer - native Linux aim trainer\n\nRun: aim-trainer\nVerify GPU and gameplay: aim-trainer --smoke-test <output-directory>\nImport: aim-trainer --import-scenario <file.sce>\nInspect: aim-trainer --inspect-scenario <file.sce>"
             );
             return Ok(());
         }
         Some(arg) => return Err(format!("Unknown argument: {arg}").into()),
     };
-    let store = if let Some(dir) = &smoke_dir {
+    let qa_source = match args.next().as_deref() {
+        Some("--scenario") if smoke_dir.is_some() => Some(PathBuf::from(
+            args.next().ok_or("--scenario needs a .sce path")?,
+        )),
+        Some(arg) => return Err(format!("Unexpected argument: {arg}").into()),
+        None => None,
+    };
+    if args.next().is_some() {
+        return Err("Unexpected extra argument".into());
+    }
+    let mut store = if let Some(dir) = &smoke_dir {
         storage::Store::from_paths(dir.join("config"), dir.join("state"))
     } else {
         storage::Store::load()
     };
+    if let Some(dir) = &smoke_dir {
+        std::fs::create_dir_all(dir)?;
+        let source = if let Some(path) = qa_source {
+            path
+        } else {
+            let path = dir.join("synthetic.sce");
+            std::fs::write(&path, include_str!("../tests/fixtures/pasu.sce"))?;
+            path
+        };
+        let id = store.import(&source)?;
+        let index = store
+            .scenarios
+            .iter()
+            .position(|s| s.id == id)
+            .ok_or("Imported scenario missing")?;
+        store.scenarios.swap(0, index);
+        std::fs::write(
+            dir.join("import-settings.json"),
+            serde_json::to_vec_pretty(&store.scenarios[0])?,
+        )?;
+    }
     let mut app = App::new(store);
     let mut smoke = smoke_dir.map(qa::Smoke::new).transpose()?;
     let (mut rl, thread) = raylib::init()

@@ -14,6 +14,8 @@ pub struct Smoke {
     play_frame: u32,
     completed: usize,
     small_capture: Option<(String, u32)>,
+    imported_start: Option<glam::Vec3>,
+    imported_id: Option<String>,
 }
 
 impl Smoke {
@@ -26,6 +28,8 @@ impl Smoke {
             play_frame: 0,
             completed: 0,
             small_capture: None,
+            imported_start: None,
+            imported_id: None,
         })
     }
     pub fn before(&mut self, app: &mut App) {
@@ -35,7 +39,15 @@ impl Smoke {
         match self.frame {
             15 => app.act(Action::Settings),
             30 => app.act(Action::History),
-            40 => app.act(Action::Library),
+            40 => {
+                app.act(Action::Library);
+                app.select_import(0);
+                self.imported_id = app.session.scenario.as_ref().map(|s| s.id.clone());
+            }
+            44 => {
+                app.selected = Drill::Six;
+                app.preview = crate::model::Session::new(Drill::Six, true, 712);
+            }
             45 => app.act(Action::Start(false)),
             _ => {}
         }
@@ -52,6 +64,12 @@ impl Smoke {
                 if let Some(drill) = Drill::ALL.get(self.drill) {
                     app.selected = *drill;
                     app.act(Action::Start(false));
+                    self.play_frame = 0;
+                } else if self.drill == Drill::ALL.len() {
+                    app.select_import(0);
+                    self.imported_id = app.preview.scenario.as_ref().map(|s| s.id.clone());
+                    app.act(Action::Start(false));
+                    self.imported_start = Some(app.session.targets[0].position);
                     self.play_frame = 0;
                 }
             }
@@ -112,6 +130,7 @@ impl Smoke {
             10 => self.screenshot(rl, thread, "library")?,
             25 => self.screenshot(rl, thread, "settings")?,
             35 => self.screenshot(rl, thread, "records")?,
+            42 => self.screenshot(rl, thread, "imported-library")?,
             50 => self.screenshot(rl, thread, "countdown")?,
             _ => {}
         }
@@ -119,24 +138,35 @@ impl Smoke {
             if self.play_frame == 75 {
                 self.screenshot(rl, thread, &format!("pause-{}", self.drill))?;
             }
+            if self.drill == Drill::ALL.len() && app.session.targets.len() != 4 {
+                return Err("Imported target count changed".into());
+            }
+            if self.drill == Drill::ALL.len()
+                && self.play_frame == 65
+                && self
+                    .imported_start
+                    .is_some_and(|p| p.distance(app.session.targets[0].position) < 0.05)
+            {
+                return Err("Imported target did not move".into());
+            }
             if self.play_frame == 95 {
                 self.screenshot(rl, thread, &format!("play-{}", self.drill))?;
             }
             if app.session.phase == Phase::Finished && self.completed == self.drill {
                 if app.session.score() <= 0.0 {
-                    return Err(format!("No score in {}", app.session.drill.name()).into());
+                    return Err(format!("No score in {}", app.session.name()).into());
                 }
                 self.screenshot(rl, thread, &format!("result-{}", self.drill))?;
                 self.completed += 1;
                 self.play_frame = 0;
                 println!(
                     "PASS: {} / score {:.0} / accuracy {:.1}%",
-                    app.session.drill.name(),
+                    app.session.name(),
                     app.session.score(),
                     app.session.accuracy()
                 );
             }
-            if self.completed == Drill::ALL.len() && self.small_capture.is_none() {
+            if self.completed == Drill::ALL.len() + 1 && self.small_capture.is_none() {
                 let loaded = crate::storage::Store::from_paths(
                     self.directory.join("config"),
                     self.directory.join("state"),
@@ -144,12 +174,28 @@ impl Smoke {
                 if !Drill::ALL.iter().all(|drill| loaded.best(*drill) > 0.0) {
                     return Err("Scores did not survive reload".into());
                 }
+                let id = self
+                    .imported_id
+                    .as_ref()
+                    .ok_or("Missing imported identity")?;
+                if !loaded.scenarios.iter().any(|s| &s.id == id) || loaded.best_import(id) <= 0.0 {
+                    return Err("Imported scenario/results did not survive reload".into());
+                }
+                let s = &app.session;
+                let expected = s
+                    .scenario
+                    .as_ref()
+                    .ok_or("Missing scenario")?
+                    .score(s.hits, s.shots);
+                if (s.score() - expected).abs() > 1e-8 {
+                    return Err("Source scoring mismatch".into());
+                }
                 fs::write(
                     self.directory.join("report.json"),
                     serde_json::to_vec_pretty(&loaded.results)?,
                 )?;
                 println!(
-                    "PASS: six native scenarios, countdown, pause/resume, results, disk reload, GPU screenshots"
+                    "PASS: six built-in drills plus persisted Pasu, countdown, pause/resume, results, disk reload, GPU screenshots"
                 );
                 return Ok(true);
             }

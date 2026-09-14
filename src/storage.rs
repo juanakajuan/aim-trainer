@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct Store {
+    pub scenarios: Vec<crate::scenario::Scenario>,
     config: PathBuf,
     state: PathBuf,
     pub settings: Settings,
@@ -82,13 +83,58 @@ impl Store {
         if results.len() > 100 {
             results.drain(..results.len() - 100);
         }
+        let scenarios = match read::<Vec<crate::scenario::Scenario>>(&state.join("scenarios.json"))
+        {
+            Ok(Some(values))
+                if values.len() <= 32 && values.iter().all(|s| s.validate().is_ok()) =>
+            {
+                values
+            }
+            Ok(None) => Vec::new(),
+            _ => {
+                notice = Some("Cannot load saved scenarios: invalid data".into());
+                Vec::new()
+            }
+        };
         Self {
+            scenarios,
             config,
             state,
             settings,
             results,
             notice,
         }
+    }
+
+    pub fn import(&mut self, path: &Path) -> Result<String, String> {
+        let scenario = crate::scenario::load(path)?;
+        if self.scenarios.iter().any(|s| s.id == scenario.id) {
+            return Ok(scenario.id);
+        }
+        if self.scenarios.len() >= 32 {
+            return Err("Import limit: 32 scenarios".into());
+        }
+        // Read the current file again; never overwrite a corrupt library with an empty one.
+        let mut saved = read::<Vec<crate::scenario::Scenario>>(&self.state.join("scenarios.json"))?
+            .unwrap_or_default();
+        if saved.len() >= 32 || saved.iter().any(|s| s.validate().is_err()) {
+            return Err("Saved scenario library is invalid or full".into());
+        }
+        let id = scenario.id.clone();
+        if !saved.iter().any(|s| s.id == id) {
+            saved.push(scenario);
+        }
+        write(&self.state.join("scenarios.json"), &saved)?;
+        self.scenarios = saved;
+        Ok(id)
+    }
+
+    pub fn best_import(&self, id: &str) -> f64 {
+        self.results
+            .iter()
+            .filter(|r| r.scenario.as_ref().is_some_and(|s| s.id == id))
+            .map(|r| r.score)
+            .fold(0.0, f64::max)
     }
 
     pub fn save_settings(&mut self) {
@@ -134,6 +180,7 @@ mod tests {
         store.save_settings();
         store.record(RunResult {
             drill: Drill::Six,
+            scenario: None,
             score: 250.0,
             accuracy: 50.0,
             hits: 5,
@@ -151,5 +198,40 @@ mod tests {
         assert!(recovered.notice.is_some());
         assert_eq!(recovered.results.len(), 1);
         fs::remove_dir_all(dir).expect("remove test data");
+    }
+}
+
+#[cfg(test)]
+mod import_tests {
+    use super::*;
+    #[test]
+    fn import_is_atomic_persistent_and_results_stay_separate() {
+        let dir = env::temp_dir().join(format!("aim-import-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("directory");
+        let source = dir.join("fixture.sce");
+        fs::write(&source, include_str!("../tests/fixtures/pasu.sce")).expect("fixture");
+        let mut store = Store::from_paths(dir.join("config"), dir.join("state"));
+        let id = store.import(&source).expect("import");
+        assert_eq!(store.import(&source).expect("duplicate"), id);
+        let before = fs::read(dir.join("state/scenarios.json")).expect("saved");
+        fs::write(&source, "invalid").expect("bad fixture");
+        assert!(store.import(&source).is_err());
+        assert_eq!(
+            before,
+            fs::read(dir.join("state/scenarios.json")).expect("saved")
+        );
+        let loaded = Store::from_paths(dir.join("config"), dir.join("state"));
+        assert_eq!(loaded.scenarios.len(), 1);
+        assert_eq!(loaded.scenarios[0].id, id);
+        assert_eq!(loaded.scenarios[0].motion.jump, 4.125);
+        let mut session = crate::model::Session::imported(loaded.scenarios[0].clone(), false, 12);
+        session.phase = crate::model::Phase::Finished;
+        session.hits = 4;
+        session.shots = 8;
+        store.record(session.result(1).expect("result"));
+        let loaded = Store::from_paths(dir.join("config"), dir.join("state"));
+        assert_eq!(loaded.best(Drill::Six), 0.0);
+        assert!((loaded.best_import(&id) - 28.284271247).abs() < 1e-6);
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 }

@@ -1,6 +1,12 @@
 //! A deliberately narrow, validated adapter for embedded Pasu-style scenarios.
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    io::Read,
+    path::Path,
+};
 
 pub const LIMIT: usize = 2 * 1024 * 1024;
 pub const UNIT: f32 = 0.00375;
@@ -130,13 +136,23 @@ impl Scenario {
     }
 }
 
+// Unmodeled fields must match this narrow compatibility contract. Unknown behavior fails closed.
+// This table contains scalar compatibility values, not scenario identities, maps, or assets.
+#[derive(Deserialize)]
+struct Compatibility {
+    ignored: BTreeSet<String>,
+    values: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+}
+
 #[derive(Default)]
 struct Section {
     kind: String,
     fields: BTreeMap<String, String>,
+    used: RefCell<BTreeSet<String>>,
 }
 impl Section {
     fn get(&self, key: &str) -> Result<&str, String> {
+        self.used.borrow_mut().insert(key.to_string());
         self.fields
             .get(key)
             .map(String::as_str)
@@ -316,6 +332,29 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
             return Err(format!("Duplicate profile {name}"));
         }
     }
+    // Resolve every embedded reference, including inactive slots. No external profile files.
+    for section in &sections {
+        for (key, kind) in [
+            ("PlayerCharacters", "Character Profile"),
+            ("BotCharacters", "Bot Profile"),
+            ("PlayerProfile", "Character Profile"),
+            ("AddedBots", "Bot Profile"),
+            ("CharacterProfile", "Character Profile"),
+            ("DodgeProfileNames", "Dodge Profile"),
+            ("WeaponsProfileNames", "Weapon Profile"),
+            ("WeaponProfileNames", "Weapon Profile"),
+            ("AimingProfileNames", "Aim Profile"),
+            ("AbilityProfileNames", "Melee Ability Profile"),
+            ("AlsoShoot", "Weapon Profile"),
+            ("ADSShoot", "Weapon Profile"),
+        ] {
+            if section.fields.contains_key(key) {
+                for name in section.get(key)?.split(';').filter(|s| !s.is_empty()) {
+                    reference(&sections, kind, name)?;
+                }
+            }
+        }
+    }
     let root = &sections[0];
     root.number("Timelimit", 60.0, 60.0)?;
     root.number("Timescale", 1.0, 1.0)?;
@@ -323,7 +362,7 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
     root.require("InvinciblePlayer", "true")?;
     root.require("InvincibleBots", "false")?;
     root.require("MapName", "Wall-less Wall.json")?;
-    for (k, _) in &root.fields {
+    for k in root.fields.keys() {
         if (k.starts_with("ScorePer") && k != "ScorePerKill")
             || k.starts_with("ScoreLoss")
             || [
@@ -348,8 +387,20 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
         root.false_if_present(key)?;
     }
     root.require("PlayerTeam", "1")?;
+    root.require("LockFOVRange", "true")?;
     let player = reference(&sections, "Character Profile", root.get("PlayerProfile")?)?;
     player.number("MaxSpeed", 0.0, 0.0)?;
+    for key in ["Gravity", "JumpVelocity", "AirJumpCount"] {
+        player.zero_if_present(key)?;
+    }
+    if player.fields.contains_key("AbilityProfileNames")
+        && player
+            .get("AbilityProfileNames")?
+            .split(';')
+            .any(|v| !v.is_empty())
+    {
+        return Err("Player abilities unsupported".into());
+    }
     let weapon_names: Vec<_> = player
         .get("WeaponProfileNames")?
         .split(';')
@@ -392,6 +443,11 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
     ] {
         weapon.zero_if_present(key)?;
     }
+    for key in ["AlsoShoot", "ADSShoot"] {
+        if weapon.fields.contains_key(key) && !weapon.get(key)?.is_empty() {
+            return Err("Weapon chains unsupported".into());
+        }
+    }
     let bots: Vec<_> = root.get("AddedBots")?.split(';').collect();
     let teams: Vec<_> = root.get("BotTeams")?.split(';').collect();
     let lives: Vec<_> = root.get("BotMaxLives")?.split(';').collect();
@@ -409,7 +465,10 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
             bot.require("UseWeapons", "false")?;
             bot.require("NoDodging", "false")?;
             bot.false_if_present("DisableScoring")?;
-            if target.is_some_and(|(previous, _)| previous != character.get("Name").unwrap_or("")) {
+            if target.is_some_and(|(previous, previous_bot): (&str, &Section)| {
+                previous != character.get("Name").unwrap_or("")
+                    || previous_bot.get("Name").ok() != bot.get("Name").ok()
+            }) {
                 return Err("Mixed target characters are unsupported".into());
             }
             target = Some((character.get("Name")?, bot));
@@ -461,6 +520,11 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
         .any(|s| !s.is_empty())
     {
         return Err("Target abilities unsupported".into());
+    }
+    for key in ["SpawnOffsetMin", "SpawnOffsetMax"] {
+        if character.fields.contains_key(key) {
+            character.require(key, "X=-0.000 Y=0.000 Z=-31.000")?;
+        }
     }
     let radius = character.number("MainBBRadius", 1.0, 300.0)?;
     character.number("MainBBHeight", radius * 2.0, radius * 2.0)?;
@@ -525,7 +589,7 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
     let mut knockers = Vec::new();
     for o in spawn_objects {
         let p = vector(&o.location)?;
-        if o.text("Path")? != "" {
+        if !o.text("Path")?.is_empty() {
             return Err("Spawn paths unsupported".into());
         }
         let permitted = o.text("PermittedCharacterProfiles")?;
@@ -597,5 +661,50 @@ pub fn parse(text: &str) -> Result<Scenario, String> {
         },
     };
     result.validate()?;
+    let policy: Compatibility = serde_json::from_str(include_str!("scenario_compat.json"))
+        .map_err(|e| format!("Invalid built-in compatibility policy: {e}"))?;
+    for section in &sections {
+        for (key, value) in &section.fields {
+            if section.used.borrow().contains(key) || policy.ignored.contains(key) {
+                continue;
+            }
+            if !policy
+                .values
+                .get(&section.kind)
+                .and_then(|fields| fields.get(key))
+                .is_some_and(|values| values.contains(value))
+            {
+                return Err(format!("Unsupported {}.{key}: {value}", section.kind));
+            }
+        }
+    }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    pub const FIXTURE: &str = include_str!("../tests/fixtures/pasu.sce");
+    #[test]
+    fn profiles_limits_and_source_scoring() {
+        let scenario = parse(FIXTURE).expect("synthetic scenario");
+        assert_eq!(scenario.knockers.len(), 8);
+        assert_eq!(scenario.motion.air_jumps, 1000);
+        assert!((scenario.score(4, 8) - 40.0 * 0.5_f64.sqrt()).abs() < 1e-9);
+        assert_eq!(scenario.score(0, 0), 0.0);
+        for (old, new) in [
+            ("CharacterProfile=Ball", "CharacterProfile=Missing"),
+            ("Gravity=0.5", "Gravity=NaN"),
+            ("Type=Hitscan", "Type=Projectile"),
+            ("BotTeams=2;2;2;2", "BotTeams=2;2;2;1"),
+            ("ScorePerKill=10.0", "ScorePerKill=10.0\nScorePerDamage=1.0"),
+            ("Name=Synthetic Pasu", "Name=Synthetic Pasu\nName=Duplicate"),
+        ] {
+            assert!(parse(&FIXTURE.replace(old, new)).is_err(), "accepted {new}");
+        }
+        assert!(parse(&"x".repeat(LIMIT + 1)).is_err());
+        let mut bad = scenario;
+        bad.motion.turn = [2.0, 1.0];
+        assert!(bad.validate().is_err());
+    }
 }
