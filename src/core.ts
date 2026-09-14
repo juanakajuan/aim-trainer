@@ -83,6 +83,8 @@ export interface Settings {
   volume: number;
   crosshair: number;
   color: string;
+  renderScale: number;
+  showLatency: boolean;
 }
 export const defaults: Settings = {
   sensitivity: 1,
@@ -90,6 +92,8 @@ export const defaults: Settings = {
   volume: 0.25,
   crosshair: 6,
   color: "#f04452",
+  renderScale: 1,
+  showLatency: true,
 };
 export interface Result {
   scenario: string;
@@ -116,6 +120,8 @@ function bounded(
 export function parseSettings(v: unknown): Settings {
   if (!isRecord(v)) return { ...defaults };
   return {
+    renderScale: bounded(v.renderScale, 0.5, 1.5, 1),
+    showLatency: typeof v.showLatency === "boolean" ? v.showLatency : true,
     sensitivity: bounded(v.sensitivity, 0.1, 10, 1),
     fov: bounded(v.fov, 60, 130, 103),
     volume: bounded(v.volume, 0, 1, 0.25),

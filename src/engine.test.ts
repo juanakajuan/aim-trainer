@@ -2,7 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import * as THREE from "three";
-import { Trainer, type Snapshot, type ArenaRenderer } from "./engine";
+import {
+  Trainer,
+  type Snapshot,
+  type ArenaRenderer,
+  type PerformanceSnapshot,
+} from "./engine";
 import { scenarios, defaults, type Result } from "./core";
 
 test("training loop: capture, countdown, raycast hit, pause, resume, finish and free play", async () => {
@@ -33,7 +38,8 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
     HTMLSelectElement: window.HTMLSelectElement,
     innerWidth: 1280,
     innerHeight: 720,
-    devicePixelRatio: 1,
+    devicePixelRatio: 2,
+    performance: { now: () => now, timeOrigin: 0 },
     requestAnimationFrame: (f: FrameRequestCallback) => {
       nextFrame = f;
       return 1;
@@ -63,12 +69,19 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
   const results: Result[] = [];
   let targetMeshes: THREE.Mesh[] = [];
   let camera: THREE.Camera | undefined;
+  let renderCount = 0;
+  let pixelRatio = 0;
+  const measurements: PerformanceSnapshot[] = [];
   const renderer: ArenaRenderer = {
-    setPixelRatio: () => {},
+    setPixelRatio: (ratio) => {
+      pixelRatio = ratio;
+    },
     setClearColor: () => {},
     setSize: () => {},
     dispose: () => {},
     render: (scene, view) => {
+      renderCount++;
+      now += 1; // One millisecond of simulated render submission.
       scene.updateMatrixWorld(true);
       view.updateMatrixWorld(true);
       camera = view;
@@ -97,7 +110,9 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
     (r) => results.push(r),
     (message) => assert.fail(message),
     () => renderer,
+    (measurement) => measurements.push(measurement),
   );
+  assert.equal(pixelRatio, 1, "avoid automatic high-DPI supersampling");
   function advance(seconds: number): void {
     for (let i = 0; i < Math.ceil(seconds / 0.02); i++) {
       now += 20;
@@ -105,15 +120,32 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
     }
   }
   trainer.start(false);
-  await Promise.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
   advance(3.1);
   assert.equal(state.phase, "running");
   assert.equal(targetMeshes.length, 6);
   const target = targetMeshes[0];
   assert.ok(target);
   assert.ok(camera);
-  camera.lookAt(target.position);
+  // Establish a previous rendered frame with no target under the old crosshair.
+  targetMeshes.forEach((mesh, i) => {
+    mesh.position.set(4 + i * 2, 2, -3);
+    mesh.updateMatrixWorld(true);
+  });
+  camera.rotation.set(0, 0, 0);
   camera.updateMatrixWorld(true);
+  // Then deliver a real mouse event and click without an intervening render.
+  target.position.set(3, 2, -3);
+  const flick = new window.MouseEvent("mousemove");
+  Object.defineProperties(flick, {
+    movementX: {
+      value:
+        Math.atan2(3, 12) / ((defaults.sensitivity * 0.022 * Math.PI) / 180),
+    },
+    movementY: { value: 0 },
+    timeStamp: { value: now - 2 },
+  });
+  window.document.dispatchEvent(flick);
   window.document.dispatchEvent(
     new window.MouseEvent("mousedown", { button: 0 }),
   );
@@ -124,13 +156,27 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
   assert.equal(state.hits, 1);
   assert.equal(state.score, 100);
   assert.equal(state.accuracy, 100);
+  advance(0.6);
+  const inputMeasurement = measurements.find((m) => m.input !== null);
+  assert.ok(
+    inputMeasurement?.input,
+    "live telemetry receives actual mouse events",
+  );
+  assert.ok(inputMeasurement.input.mean >= 2);
+  assert.ok(inputMeasurement.cpu && inputMeasurement.cpu.mean >= 1);
   trainer.pause();
+  const pausedRenderCount = renderCount;
   const remaining = state.time;
   advance(2);
   assert.equal(state.phase, "paused");
   assert.equal(state.time, remaining);
+  assert.equal(
+    renderCount,
+    pausedRenderCount,
+    "paused scene does not consume GPU frames",
+  );
   trainer.resume();
-  await Promise.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
   advance(60);
   assert.equal(state.phase, "results");
   assert.equal(results.length, 1);
@@ -138,7 +184,7 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
   trainer.menu();
   assert.equal(state.phase, "idle");
   trainer.start(true);
-  await Promise.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
   advance(65);
   assert.equal(state.phase, "running");
   assert.equal(state.free, true);
@@ -150,7 +196,7 @@ test("training loop: capture, countdown, raycast hit, pause, resume, finish and 
     assert.ok(drill);
     trainer.select(drill);
     trainer.start(false);
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     advance(3.1);
     window.document.dispatchEvent(
       new window.MouseEvent("mousedown", { button: 0 }),

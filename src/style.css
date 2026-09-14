@@ -822,3 +822,94 @@ th {
     height: 14px;
   }
 }
+
+#latency-panel {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  width: 290px;
+  z-index: 3;
+  padding: 16px;
+  color: #eef3f7;
+  background: #10171ee8;
+  border: 1px solid #56616d;
+  border-radius: 4px;
+  pointer-events: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  contain: layout paint;
+}
+.latency-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.latency-heading span {
+  font-size: 11px;
+  font-weight: 400;
+  color: #b8c2cc;
+  letter-spacing: 0;
+}
+.latency-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.latency-main b {
+  color: #ecad47;
+  font-size: 34px;
+  line-height: 1;
+}
+.latency-main span {
+  color: #ccd4dc;
+  line-height: 1.4;
+}
+#latency-panel dl {
+  margin: 0;
+}
+#latency-panel dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 0;
+}
+#latency-panel dt {
+  color: #b8c2cc;
+}
+#latency-panel dd {
+  margin: 0;
+}
+#latency-panel p {
+  border-top: 1px solid #414b56;
+  padding-top: 10px;
+  margin: 10px 0 7px;
+  line-height: 1.4;
+  color: #cfdae4;
+}
+#latency-panel small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #aeb9c5;
+}
+.performance-note {
+  color: #aeb9c5;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.setting input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+@media (max-width: 720px) {
+  #latency-panel {
+    left: 10px;
+    bottom: 10px;
+    width: 250px;
+    padding: 12px;
+  }
+}

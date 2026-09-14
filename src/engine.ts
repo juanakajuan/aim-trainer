@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { LatencyMeter, type LatencySnapshot } from "./latency";
+import { captureMouse, type InputMode } from "./pointer-lock";
 import {
   accuracy,
   horizontalToVertical,
@@ -27,12 +29,26 @@ export type ArenaRenderer = Pick<
   THREE.WebGLRenderer,
   "setPixelRatio" | "setClearColor" | "setSize" | "render" | "dispose"
 >;
+export interface PerformanceSnapshot extends LatencySnapshot {
+  inputMode: InputMode;
+}
 export class Trainer {
   private renderer: ArenaRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera();
   private ray = new THREE.Raycaster();
   private targets: Target[] = [];
+  private targetMeshes: Target["mesh"][] = [];
+  private intersections: THREE.Intersection[] = [];
+  private center = new THREE.Vector2(0, 0);
+  private movement = new THREE.Vector3();
+  private up = new THREE.Vector3(0, 1, 0);
+  private meter = new LatencyMeter();
+  private inputMode: InputMode = "not-captured";
+  private capturePending = false;
+  private telemetryDue = 0;
+  private sceneDirty = true;
+  private readonly animate = (time: number): void => this.tick(time);
   private phase: Phase = "idle";
   private beforePause: Phase = "running";
   private elapsed = 0;
@@ -56,10 +72,17 @@ export class Trainer {
     private onResult: (r: Result) => void,
     private onError: (message: string) => void,
     createRenderer: (canvas: HTMLCanvasElement) => ArenaRenderer = (canvas) =>
-      new THREE.WebGLRenderer({ canvas, antialias: true }),
+      new THREE.WebGLRenderer({
+        canvas,
+        antialias: false,
+        powerPreference: "high-performance",
+        alpha: false,
+        stencil: false,
+      }),
+    private onPerformance: (snapshot: PerformanceSnapshot) => void = () => {},
   ) {
     this.renderer = createRenderer(canvas);
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.settings.renderScale);
     this.renderer.setClearColor("#70787d");
     this.scene.fog = new THREE.Fog("#70787d", 28, 65);
     this.camera.position.set(0, 2, 9);
@@ -106,6 +129,7 @@ export class Trainer {
         this.pause();
     });
     document.addEventListener("pointerlockerror", () => {
+      if (this.capturePending) return;
       this.pause();
       this.onError("Mouse capture failed. Click Resume to try again.");
     });
@@ -115,6 +139,7 @@ export class Trainer {
         !["running", "countdown"].includes(this.phase)
       )
         return;
+      this.recordInput(e);
       const scale = (this.settings.sensitivity * 0.022 * Math.PI) / 180;
       this.camera.rotation.y -= e.movementX * scale;
       this.camera.rotation.x = THREE.MathUtils.clamp(
@@ -125,11 +150,14 @@ export class Trainer {
     });
     document.addEventListener("mousedown", (e) => {
       if (e.button !== 0 || document.pointerLockElement !== canvas) return;
+      this.recordInput(e);
       this.held = true;
       if (this.phase === "running" && this.scenario.mode === "click")
         this.shoot();
     });
-    document.addEventListener("mouseup", () => {
+    document.addEventListener("mouseup", (e) => {
+      if (e.button !== 0) return;
+      this.recordInput(e);
       this.held = false;
     });
     document.addEventListener("keydown", (e) => {
@@ -138,6 +166,8 @@ export class Trainer {
         e.target instanceof HTMLSelectElement
       )
         return;
+      if (!e.repeat && ["KeyW", "KeyA", "KeyS", "KeyD"].includes(e.code))
+        this.recordInput(e);
       this.keys.add(e.code);
       if (e.code === "KeyR" && ["running", "countdown"].includes(this.phase))
         this.start(this.free);
@@ -149,9 +179,10 @@ export class Trainer {
     });
     this.resetTargets();
     this.resize();
-    this.frame = requestAnimationFrame((t) => this.tick(t));
+    this.frame = requestAnimationFrame(this.animate);
   }
   resize(): void {
+    this.sceneDirty = true;
     this.renderer.setSize(innerWidth, innerHeight);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.fov = horizontalToVertical(
@@ -162,22 +193,33 @@ export class Trainer {
   }
   configure(settings: Settings): void {
     this.settings = settings;
+    this.renderer.setPixelRatio(settings.renderScale);
+    this.meter.reset();
     for (const t of this.targets) t.mesh.material.color.set(settings.color);
     this.resize();
   }
   select(s: Scenario): void {
+    this.sceneDirty = true;
     this.scenario = s;
     this.camera.position.set(0, 2, 9);
     this.camera.rotation.set(0, 0, 0);
     this.resetTargets();
   }
   private resetTargets(): void {
+    if (
+      this.targets.length === this.scenario.count &&
+      this.targets[0]?.mesh.geometry.parameters.radius === this.scenario.radius
+    ) {
+      for (const target of this.targets) this.place(target);
+      return;
+    }
     for (const t of this.targets) {
       this.scene.remove(t.mesh);
       t.mesh.geometry.dispose();
       t.mesh.material.dispose();
     }
     this.targets = [];
+    this.targetMeshes = [];
     for (let i = 0; i < this.scenario.count; i++) {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(this.scenario.radius, 24, 16),
@@ -194,6 +236,7 @@ export class Trainer {
         turn: 1,
       };
       this.targets.push(t);
+      this.targetMeshes.push(mesh);
       this.place(t);
     }
   }
@@ -219,14 +262,37 @@ export class Trainer {
     t.mesh.scale.setScalar(1);
   }
   async capture(): Promise<void> {
+    if (document.pointerLockElement === this.canvas || this.capturePending)
+      return;
+    this.capturePending = true;
     try {
-      await this.canvas.requestPointerLock();
+      this.inputMode = await captureMouse(this.canvas);
+      // Legacy implementations can return before pointerlockchange.
     } catch {
+      this.inputMode = "not-captured";
       this.pause();
       this.onError("Click Resume to capture the mouse. Use a desktop browser.");
+    } finally {
+      this.capturePending = false;
     }
   }
+  private recordInput(event: MouseEvent | KeyboardEvent): void {
+    if (
+      !this.settings.showLatency ||
+      document.pointerLockElement !== this.canvas ||
+      (this.phase !== "running" && this.phase !== "countdown")
+    )
+      return;
+    this.meter.recordInput(
+      event.timeStamp,
+      performance.now(),
+      performance.timeOrigin,
+    );
+  }
   start(free: boolean): void {
+    this.meter.reset();
+    this.telemetryDue = 0;
+    this.last = 0;
     this.free = free;
     this.elapsed = 0;
     this.countdown = 3;
@@ -241,7 +307,8 @@ export class Trainer {
     this.resetTargets();
     this.phase = "countdown";
     this.emit();
-    if (!this.audio) this.audio = new AudioContext();
+    if (!this.audio)
+      this.audio = new AudioContext({ latencyHint: "interactive" });
     void this.audio.resume().catch(() => {});
     void this.capture();
   }
@@ -255,6 +322,9 @@ export class Trainer {
     this.emit();
   }
   resume(): void {
+    this.meter.reset();
+    this.telemetryDue = 0;
+    this.last = 0;
     this.phase = this.beforePause === "countdown" ? "countdown" : "running";
     this.emit();
     void this.capture();
@@ -266,8 +336,16 @@ export class Trainer {
     this.emit();
   }
   private hitTarget(): Target | undefined {
-    this.ray.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-    const hit = this.ray.intersectObjects(this.targets.map((t) => t.mesh))[0];
+    // Mouse events and respawns can happen between renders. Raycasting must use current transforms.
+    this.camera.updateMatrixWorld(true);
+    for (const mesh of this.targetMeshes) mesh.updateMatrixWorld(true);
+    this.ray.setFromCamera(this.center, this.camera);
+    this.intersections.length = 0;
+    const hit = this.ray.intersectObjects(
+      this.targetMeshes,
+      false,
+      this.intersections,
+    )[0];
     return this.targets.find((t) => t.mesh === hit?.object);
   }
   private sound(): void {
@@ -338,6 +416,10 @@ export class Trainer {
     });
   }
   private tick(now: number): void {
+    const started = performance.now();
+    const active = this.phase === "running" || this.phase === "countdown";
+    const measuring = active && this.settings.showLatency;
+    if (measuring) this.meter.beginFrame(started);
     const delta = Math.min((now - (this.last || now)) / 1000, 0.05);
     this.last = now;
     if (
@@ -353,14 +435,14 @@ export class Trainer {
     if (this.phase === "running") {
       const dt = this.free ? delta : Math.min(delta, 60 - this.elapsed);
       this.elapsed += dt;
-      const movement = new THREE.Vector3(
+      const movement = this.movement.set(
         Number(this.keys.has("KeyD")) - Number(this.keys.has("KeyA")),
         0,
         Number(this.keys.has("KeyS")) - Number(this.keys.has("KeyW")),
       );
       movement
         .normalize()
-        .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.camera.rotation.y)
+        .applyAxisAngle(this.up, this.camera.rotation.y)
         .multiplyScalar(dt * 3);
       this.camera.position.add(movement);
       this.camera.position.x = THREE.MathUtils.clamp(
@@ -406,13 +488,28 @@ export class Trainer {
       }
       if (!this.free && this.elapsed >= 60) this.finish();
     }
+    if (active || this.sceneDirty) {
+      this.renderer.render(this.scene, this.camera);
+      this.sceneDirty = false;
+    }
+    if (measuring) {
+      const submitted = performance.now();
+      this.meter.submitted(started, submitted);
+      if (submitted >= this.telemetryDue) {
+        this.onPerformance({
+          ...this.meter.snapshot(submitted),
+          inputMode: this.inputMode,
+        });
+        this.telemetryDue = submitted + 500;
+      }
+    }
+    // Submit the 3D frame before touching the DOM. HUD and telemetry have independent rates.
     this.hudTime += delta;
-    if (this.hudTime > 0.05) {
+    if (active && this.hudTime > 0.05) {
       this.emit();
       this.hudTime = 0;
     }
-    this.renderer.render(this.scene, this.camera);
-    this.frame = requestAnimationFrame((t) => this.tick(t));
+    this.frame = requestAnimationFrame(this.animate);
   }
   dispose(): void {
     cancelAnimationFrame(this.frame);
