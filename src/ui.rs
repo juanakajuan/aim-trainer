@@ -1,12 +1,16 @@
 use raylib::prelude::*;
 
-pub const BG: Color = Color::new(18, 22, 29, 255);
-pub const PANEL: Color = Color::new(26, 32, 41, 255);
-pub const RAISED: Color = Color::new(35, 43, 54, 255);
-pub const BORDER: Color = Color::new(53, 64, 79, 255);
-pub const TEXT: Color = Color::new(233, 238, 244, 255);
-pub const MUTED: Color = Color::new(146, 160, 179, 255);
-pub const ACCENT: Color = Color::new(243, 177, 77, 255);
+pub const BG: Color = Color::new(15, 15, 15, 255);
+pub const PANEL: Color = Color::new(31, 31, 31, 255);
+pub const RAISED: Color = Color::new(43, 43, 43, 255);
+pub const BORDER: Color = Color::new(62, 62, 62, 255);
+pub const TEXT: Color = Color::new(245, 245, 245, 255);
+pub const MUTED: Color = Color::new(170, 170, 170, 255);
+pub const ACCENT: Color = Color::new(255, 92, 92, 255);
+pub const ACTION: Color = Color::new(204, 0, 0, 255);
+pub const HOVER: Color = Color::new(61, 61, 61, 255);
+pub const SELECTED: Color = Color::new(62, 35, 35, 255);
+pub const ERROR: Color = Color::new(255, 155, 155, 255);
 pub const GREEN: Color = Color::new(107, 211, 157, 255);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -51,9 +55,18 @@ impl<D: RaylibDraw> Ui<'_, D> {
     pub fn fill(&mut self, area: Rectangle, color: Color) {
         self.draw.draw_rectangle_rec(area, color);
     }
+    pub fn rounded(&mut self, area: Rectangle, radius: f32, color: Color) {
+        let roundness = (2.0 * radius / area.width.min(area.height)).min(1.0);
+        self.draw.draw_rectangle_rounded(area, roundness, 8, color);
+    }
+    pub fn outline(&mut self, area: Rectangle, radius: f32, width: f32, color: Color) {
+        let roundness = (2.0 * radius / area.width.min(area.height)).min(1.0);
+        self.draw
+            .draw_rectangle_rounded_lines_ex(area, roundness, 8, width, color);
+    }
     pub fn panel(&mut self, area: Rectangle) {
-        self.fill(area, PANEL);
-        self.draw.draw_rectangle_lines_ex(area, 1.0, BORDER);
+        self.rounded(area, 12.0, PANEL);
+        self.outline(area, 12.0, 1.0, BORDER);
     }
     pub fn text(&mut self, label: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw
@@ -102,53 +115,57 @@ impl<D: RaylibDraw> Ui<'_, D> {
         let hover = self.hovered(area);
         let color = if primary {
             if hover {
-                Color::new(255, 196, 106, 255)
+                Color::new(230, 24, 24, 255)
             } else {
-                ACCENT
+                ACTION
             }
         } else if hover {
-            Color::new(49, 61, 77, 255)
+            HOVER
         } else {
             RAISED
         };
-        self.fill(area, color);
+        self.rounded(area, 10.0, color);
         if !primary {
-            self.draw.draw_rectangle_lines_ex(area, 1.0, BORDER);
+            self.outline(area, 10.0, 1.0, BORDER);
         }
-        self.center(label, area, 16.0, if primary { BG } else { TEXT });
+        self.center(label, area, 16.0, TEXT);
         self.clicked(area)
     }
     pub fn tab(&mut self, label: &str, area: Rectangle, active: bool) -> bool {
+        let chip = rect(
+            area.x + 4.0,
+            area.y + (area.height - 36.0) * 0.5,
+            area.width - 8.0,
+            36.0,
+        );
         if active || self.hovered(area) {
-            self.fill(area, RAISED);
+            self.rounded(chip, 18.0, if active { SELECTED } else { HOVER });
         }
-        self.center(label, area, 15.0, if active { ACCENT } else { MUTED });
         if active {
-            self.fill(
-                rect(area.x, area.y + area.height - 3.0, area.width, 3.0),
-                ACCENT,
-            );
+            self.outline(chip, 18.0, 1.0, ACCENT);
         }
+        self.center(label, area, 15.0, if active { TEXT } else { MUTED });
         self.clicked(area)
     }
     pub fn toggle(&mut self, label: &str, x: f32, y: f32, value: &mut bool) {
         let area = rect(x, y, 560.0, 54.0);
         self.text(label, x, y + 16.0, 17.0, TEXT);
         let button = rect(x + 434.0, y + 6.0, 126.0, 40.0);
-        self.fill(
+        self.rounded(
             button,
+            20.0,
             if *value {
-                Color::new(52, 72, 65, 255)
+                ACTION
+            } else if self.hovered(area) {
+                HOVER
             } else {
                 RAISED
             },
         );
-        self.center(
-            if *value { "ON" } else { "OFF" },
-            button,
-            15.0,
-            if *value { GREEN } else { MUTED },
-        );
+        if self.hovered(area) {
+            self.outline(button, 20.0, 1.0, TEXT);
+        }
+        self.center(if *value { "ON" } else { "OFF" }, button, 15.0, TEXT);
         if self.clicked(area) {
             *value = !*value;
         }
@@ -219,16 +236,15 @@ impl<D: RaylibDraw> Ui<'_, D> {
                 *self.editor = None;
             }
         }
-        self.fill(entry, BG);
-        self.draw.draw_rectangle_lines_ex(
+        self.rounded(entry, 8.0, BG);
+        self.outline(
             entry,
-            1.0,
+            8.0,
+            if active { 2.0 } else { 1.0 },
             if active {
-                if valid {
-                    ACCENT
-                } else {
-                    Color::new(240, 92, 92, 255)
-                }
+                if valid { ACCENT } else { ERROR }
+            } else if self.hovered(entry) {
+                MUTED
             } else {
                 BORDER
             },

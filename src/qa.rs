@@ -13,6 +13,7 @@ pub struct Smoke {
     drill: usize,
     play_frame: u32,
     completed: usize,
+    small_capture: Option<(String, u32)>,
 }
 
 impl Smoke {
@@ -24,12 +25,17 @@ impl Smoke {
             drill: 0,
             play_frame: 0,
             completed: 0,
+            small_capture: None,
         })
     }
     pub fn before(&mut self, app: &mut App) {
+        if self.small_capture.is_some() {
+            return;
+        }
         match self.frame {
             15 => app.act(Action::Settings),
-            30 => app.act(Action::Back),
+            30 => app.act(Action::History),
+            40 => app.act(Action::Library),
             45 => app.act(Action::Start(false)),
             _ => {}
         }
@@ -74,13 +80,15 @@ impl Smoke {
         }
     }
     fn screenshot(
-        &self,
+        &mut self,
         rl: &mut RaylibHandle,
         thread: &RaylibThread,
         name: &str,
     ) -> Result<(), Box<dyn Error>> {
         let path = self.directory.join(format!("{name}.png"));
         crate::screenshot(rl, thread, &path)?;
+        self.small_capture = Some((name.to_string(), 3));
+        rl.set_window_size(1024, 640);
         Ok(())
     }
     pub fn after(
@@ -89,9 +97,21 @@ impl Smoke {
         rl: &mut RaylibHandle,
         thread: &RaylibThread,
     ) -> Result<bool, Box<dyn Error>> {
+        if let Some((name, frames_left)) = self.small_capture.take() {
+            // Let the resized swap chain render before reading pixels.
+            if frames_left > 0 {
+                self.small_capture = Some((name, frames_left - 1));
+                return Ok(false);
+            }
+            let path = self.directory.join(format!("{name}-small.png"));
+            crate::screenshot(rl, thread, &path)?;
+            rl.set_window_size(1440, 900);
+            return Ok(false);
+        }
         match self.frame {
             10 => self.screenshot(rl, thread, "library")?,
             25 => self.screenshot(rl, thread, "settings")?,
+            35 => self.screenshot(rl, thread, "records")?,
             50 => self.screenshot(rl, thread, "countdown")?,
             _ => {}
         }
@@ -116,7 +136,7 @@ impl Smoke {
                     app.session.accuracy()
                 );
             }
-            if self.completed == Drill::ALL.len() {
+            if self.completed == Drill::ALL.len() && self.small_capture.is_none() {
                 let loaded = crate::storage::Store::from_paths(
                     self.directory.join("config"),
                     self.directory.join("state"),
