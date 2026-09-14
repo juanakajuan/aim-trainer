@@ -1,54 +1,82 @@
 # Aim Room
 
-A desktop browser aim trainer inspired by the basic KovaaK’s sandbox loop.
+A native Linux aim trainer inspired by the core Kovaak's sandbox. Written in Rust with raylib, GLFW and OpenGL. Runs on CachyOS, including KDE Wayland through XWayland. No browser, web server, account or network connection is needed.
 
-## Run
+## Start
 
-```sh
-npm install
-npm run dev
-```
-
-Open the local URL. Use a desktop mouse and a browser with WebGL and pointer lock support.
-
-## Features
-
-- Six 3D drills: 1wall 6targets, Tile Frenzy, Micro Precision, Smooth Tracking, Close Strafes, Target Switching.
-- 60-second challenges with a three-second countdown; unlimited free play.
-- Mouse camera control, center crosshair, raycast hits and WASD movement.
-- Escape pauses; Resume captures the mouse again; R restarts.
-- Source/Quake sensitivity scale, horizontal FOV, target color, crosshair size and hit sound volume.
-- Local scores and last 100 results. Free play does not save results.
-
-Click drills: one click per shot, score = hits × 100 × accuracy. Tracking: hold fire, score = seconds on target × 100. Switching: hold fire for 0.3 seconds per target, score = targets cleared × 100. Tracking accuracy is time on target divided by time firing.
-
-This is an independent implementation. It does not use KovaaK’s assets or exact scenario files. It does not include workshop content, online leaderboards, scenario editing, or all game sensitivity profiles. Browser input and performance can differ from the native game.
-
-## Checks
+Open **Aim Room** from the application menu after installation, or run:
 
 ```sh
-npm test
-npm run build
+./run.sh
 ```
 
-Tests cover score calculations, FOV conversion, external storage validation, raycast hits, tracking, switching, countdown, pause/resume, challenge completion and free play. Engine checks use a simulated DOM and renderer; they do not verify GPU output or physical mouse input. Build checks strict TypeScript and produces `dist/` for static hosting.
+The standalone executable is `target/release/aim-room`. Fonts, sounds and shaders are built into it. You can move the executable without its source folder.
 
-## Low-latency mode and measurements
+To build and install for your user:
 
-The renderer requests the high-performance GPU, disables anti-aliasing, and defaults to one rendering pixel per CSS pixel. On a device pixel ratio of 2, this renders one quarter as many pixels as the previous default. Change **Settings → Render scale** (0.5–1.5) to trade clarity for GPU work. The HUD and crosshair remain at browser resolution.
+```sh
+./scripts/install.sh
+```
 
-Raw mouse movement is requested, with standard pointer lock as a fallback when raw input is unsupported. “Raw input requested” is deliberate: some browsers silently ignore that option. Mouse look has no smoothing or interpolation. Shots use current camera and target transforms, including input received between renders. The render loop reuses vectors and raycast arrays, reuses targets on restart, submits the scene before HUD work, and avoids rendering unchanged menu/pause frames. The display updates twice per second; the score HUD updates at 20 Hz. Audio requests the interactive latency mode.
+This installs `~/.local/bin/aim-room` and an application menu entry. It does not need root access.
 
-**F3** toggles the live timing panel during play. This also disables timing collection when hidden. The preference is saved when mouse capture ends. A checkbox is available in Settings.
+## Practice
 
-- **Input → render submit:** browser event timestamp to the return of the first renderer call containing that event. Includes event dispatch wait, wait for the next frame, game work and CPU render submission. All delivered mouse movement/button and movement-key-down samples are counted, not just the newest event in each frame.
-- **Input p95:** 95% of recent input samples are at or below this value.
-- **Event dispatch:** browser event timestamp to entry into the input handler.
-- **Frame avg / p95 and FPS:** measured intervals between active frame callbacks. These are not input latency or confirmed display presentation times.
-- **CPU to submit:** frame callback entry to renderer return. This excludes the later HUD/telemetry work and does not wait for the GPU.
+| Scenario | Task |
+| --- | --- |
+| 1wall 6targets | Click six small spheres; each hit creates a new target. |
+| Tile Frenzy | Click three large square tiles. |
+| Micro Precision | Click five small targets in a narrow area. |
+| Smooth Tracking | Hold fire and follow a sphere through smooth turns. |
+| Close Strafes | Hold fire and react to short, random direction changes. |
+| Target Switching | Hold fire; each target needs 0.3 seconds on target. |
 
-Statistics use samples from the last two seconds, bounded to 4096 input samples and 2048 frame samples. More than 2048 input events between submissions are counted as omitted. No input shows a dash after samples expire. Start/resume clears samples; pause freezes the last values. Invalid/incomparable event timestamps are ignored. Browser timestamp precision and event coalescing limit accuracy.
+Challenge runs last 60 seconds after a three-second countdown. Free play has no time limit and does not save a score. Pause and focus loss stop the clock. A stall longer than half a second also pauses the session.
 
-These are **software measurements, not total mouse-to-screen latency**. They exclude mouse hardware/polling before event creation, GPU completion/queueing, the browser compositor, scanout and panel response. Use an external latency tester or a high-speed camera to measure total latency. Do not use FPS or these values to claim parity with a native game. Rendering remains scheduled by the browser; there is no portable browser switch to disable VSync.
+Clicking score = hits × 100 × accuracy fraction. Tracking score = seconds on target × 100. Switching score = targets cleared × 100. Tracking and switching accuracy use time on target divided by time firing. Scores are independent local results; they do not match official leaderboards.
 
-Validation: the integration test sends a mouse flick and click between renders and checks that the first shot uses the new aim. Timing tests cover known event/submit intervals, p95, stale samples, reset, timestamp validation and overflow. Raw input tests cover unsupported-option fallback and permission errors. Tests do not measure GPU or physical mouse latency.
+| Control | Action |
+| --- | --- |
+| Mouse | Aim |
+| Left mouse | Fire; hold for tracking and switching |
+| WASD | Move |
+| Esc | Pause or resume; return from settings |
+| R | Restart the current drill |
+| Enter | Start a challenge from the scenario menu |
+| F2 | Settings |
+| F3 | Show or hide FPS and average frame time |
+| F11 | Toggle borderless fullscreen |
+| F12 | Save a screenshot to `~/Pictures/Aim Room/` |
+
+## Settings and data
+
+Click a numeric field, type the value, then press Enter. Settings include sensitivity, three sensitivity scales, mouse DPI, horizontal FOV, target and crosshair colors, crosshair size/gap, sound volume, fullscreen, VSync and frame limit. Changing the sensitivity scale converts the value to preserve turning speed within the allowed range. DPI is used only to calculate cm/360.
+
+Sensitivity uses degrees per mouse count: Source/Quake `0.022`, Valorant `0.07`, Overwatch `0.0066`. FOV is the actual horizontal angle at the current window aspect ratio. It is not a game-specific FOV scale.
+
+GLFW enables raw mouse motion during capture if the system supports it. Aim has no smoothing or interpolation. The default frame limit is 360 FPS, with VSync off. Menu screens use a 60 FPS limit. The desktop compositor or driver can still limit presentation. The timing display measures frame intervals, not physical mouse-to-screen latency.
+
+- Settings: `$XDG_CONFIG_HOME/aim-room/settings.json`, default `~/.config/aim-room/settings.json`.
+- Last 100 challenge results: `$XDG_STATE_HOME/aim-room/results.json`, default `~/.local/state/aim-room/results.json`.
+- Writes use a temporary file and rename. Invalid values are rejected or reset to valid defaults. A save failure is shown in the app.
+
+## Build and verify
+
+Needs Rust 1.88 or later, CMake, a C compiler, Clang/libclang, OpenGL and X11 development libraries. These were available on the target CachyOS system. The built executable uses the system graphics and audio drivers.
+
+```sh
+cargo test --locked
+cargo clippy --all-targets --locked -- -D warnings
+cargo build --release --locked
+./target/release/aim-room --smoke-test artifacts/native-qa
+```
+
+The six unit tests cover hit geometry, same-frame aim and fire, scores, challenge timing, pause, free play, sensitivity/FOV and disk saves. The native smoke check opens a real GPU window, drives all six drills with controlled inputs, captures screens and checks saved results after reload. It uses an isolated save directory and an accelerated simulation clock. It does not measure human aim or physical input latency.
+
+## Scope and sources
+
+This is an independent recreation of the basic training loop. The UI, room, sounds and scenario logic are local implementations. It has no Kovaak's assets, exact scenario files, Workshop, online leaderboard, scenario editor or advanced weapon simulation. The old browser implementation remains in Git history.
+
+Reference: [Kovaak's sandbox and practice guidance](https://www.kovaak.com/fpsaimtrainer/), [sensitivity scales](https://www.kovaak.com/sensitivity-matcher/), and [GLFW raw mouse input](https://www.glfw.org/docs/latest/input_guide.html#raw_mouse_motion).
+
+Code: MIT. DejaVu fonts: see `assets/FONT-LICENSE.txt`. raylib and GLFW retain their upstream licenses.

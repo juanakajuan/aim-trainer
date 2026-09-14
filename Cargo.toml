@@ -1,0 +1,30 @@
+[package]
+name = "aim-room"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A native Linux aim trainer inspired by the Kovaak's sandbox"
+license = "MIT"
+
+[dependencies]
+raylib = { version = "=6.0.0", default-features = false, features = [
+    "GLFW_BUILD_X11", "USE_AUDIO", "SUPPORT_MODULE_RSHAPES",
+    "SUPPORT_MODULE_RTEXTURES", "SUPPORT_MODULE_RTEXT", "SUPPORT_MODULE_RMODELS",
+    "SUPPORT_MODULE_RAUDIO", "SUPPORT_FILEFORMAT_PNG", "SUPPORT_IMAGE_EXPORT",
+    "SUPPORT_IMAGE_GENERATION", "SUPPORT_FILEFORMAT_TTF", "SUPPORT_FILEFORMAT_WAV",
+    "SUPPORT_QUADS_DRAW_MODE", "SUPPORT_TRACELOG",
+] }
+glam = "=0.32.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
